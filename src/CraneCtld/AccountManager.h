@@ -122,7 +122,7 @@ class AccountManager {
   CraneExpected<void> BlockAccount(uint32_t uid,
                                    const std::string& account_list, bool block);
 
-  CraneExpected<void> BlockUser(uint32_t uid, const std::string& name,
+  CraneExpected<void> BlockUser(uint32_t uid, const std::string& user_list,
                                 const std::string& account, bool block);
 
   bool CheckUserPermissionToPartition(const std::string& name,
@@ -304,7 +304,7 @@ class AccountManager {
   CraneExpected<void> DeleteAccountAllowedQos_(const Account& account,
                                                const std::string& qos);
 
-  CraneExpected<void> BlockUser_(const std::string& name,
+  CraneExpected<void> BlockUser_(const std::vector<std::string>& user_vec,
                                  const std::string& account, bool block);
 
   CraneExpected<void> BlockAccount_(const std::vector<std::string>& account_vec,
