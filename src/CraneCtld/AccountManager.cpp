@@ -18,8 +18,6 @@
 
 #include "AccountManager.h"
 
-#include <string>
-
 #include "CtldPublicDefs.h"
 #include "crane/PasswordEntry.h"
 #include "protos/PublicDefs.pb.h"
@@ -88,7 +86,13 @@ AccountManager::CraneExpected<void> AccountManager::AddAccount(
       result = CheckIfUserHasHigherPrivThan_(*op_user, User::None);
     else
       result = CheckIfUserHasPermOnAccountNoLock_(
-          *op_user, new_account.parent_account, false);
+                   *op_user, new_account.parent_account, false)
+                   .or_else([](const CraneErrCode& err) {
+                     if (err == CraneErrCode::ERR_INVALID_ACCOUNT)
+                       return CraneExpected<void>{std::unexpected(
+                           CraneErrCode::ERR_INVALID_PARENTACCOUNT)};
+                     return CraneExpected<void>{std::unexpected(err)};
+                   });
     if (!result) return result;
   }
 
@@ -1306,14 +1310,11 @@ AccountManager::CraneExpected<void>
 AccountManager::CheckIfUserHasPermOnAccountNoLock_(const User& op_user,
                                                    const std::string& account,
                                                    bool read_only_priv) {
-  if (account.empty()) {
+  if (account.empty())
     return std::unexpected(CraneErrCode::ERR_PERMISSION_USER);
-  }
 
   const Account* account_ptr = GetExistedAccountInfoNoLock_(account);
-  if (!account_ptr) {
-    return std::unexpected(CraneErrCode::ERR_INVALID_ACCOUNT);
-  }
+  if (!account_ptr) return std::unexpected(CraneErrCode::ERR_INVALID_ACCOUNT);
 
   if (op_user.admin_level == User::None) {
     if (read_only_priv) {
