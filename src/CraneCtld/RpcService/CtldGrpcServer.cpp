@@ -648,7 +648,7 @@ grpc::Status CraneCtldServiceImpl::QueryUserInfo(
   auto extract_result = CheckCertAllowedAndExtractUIDFromCert_(context);
   if (!extract_result) {
     response->set_ok(false);
-    response->set_reason(crane::grpc::ErrCode::ERR_INVALID_UID);
+    response->set_reason(crane::grpc::ErrCode::ERR_PERMISSION_USER);
     return grpc::Status::OK;
   }
 
@@ -714,7 +714,7 @@ grpc::Status CraneCtldServiceImpl::QueryQosInfo(
   auto extract_result = CheckCertAllowedAndExtractUIDFromCert_(context);
   if (!extract_result) {
     response->set_ok(false);
-    response->set_reason(crane::grpc::ErrCode::ERR_INVALID_UID);
+    response->set_reason(crane::grpc::ErrCode::ERR_PERMISSION_USER);
     return grpc::Status::OK;
   }
 
@@ -751,7 +751,7 @@ grpc::Status CraneCtldServiceImpl::DeleteAccount(
   auto extract_result = CheckCertAllowedAndExtractUIDFromCert_(context);
   if (!extract_result) {
     response->set_ok(false);
-    response->set_reason(crane::grpc::ErrCode::ERR_INVALID_UID);
+    response->set_reason(crane::grpc::ErrCode::ERR_PERMISSION_USER);
     return grpc::Status::OK;
   }
 
@@ -773,7 +773,7 @@ grpc::Status CraneCtldServiceImpl::DeleteUser(
   auto extract_result = CheckCertAllowedAndExtractUIDFromCert_(context);
   if (!extract_result) {
     response->set_ok(false);
-    response->set_reason(crane::grpc::ErrCode::ERR_INVALID_UID);
+    response->set_reason(crane::grpc::ErrCode::ERR_PERMISSION_USER);
     return grpc::Status::OK;
   }
 
@@ -796,7 +796,7 @@ grpc::Status CraneCtldServiceImpl::DeleteQos(
   auto extract_result = CheckCertAllowedAndExtractUIDFromCert_(context);
   if (!extract_result) {
     response->set_ok(false);
-    response->set_reason(crane::grpc::ErrCode::ERR_INVALID_UID);
+    response->set_reason(crane::grpc::ErrCode::ERR_PERMISSION_USER);
     return grpc::Status::OK;
   }
 
@@ -820,7 +820,7 @@ grpc::Status CraneCtldServiceImpl::BlockAccountOrUser(
   auto extract_result = CheckCertAllowedAndExtractUIDFromCert_(context);
   if (!extract_result) {
     response->set_ok(false);
-    response->set_reason(crane::grpc::ErrCode::ERR_INVALID_UID);
+    response->set_reason(crane::grpc::ErrCode::ERR_PERMISSION_USER);
     return grpc::Status::OK;
   }
 
@@ -850,6 +850,31 @@ grpc::Status CraneCtldServiceImpl::BlockAccountOrUser(
   return grpc::Status::OK;
 }
 
+grpc::Status CraneCtldServiceImpl::ResetUserCredential(
+    grpc::ServerContext *context,
+    const crane::grpc::ResetUserCredentialRequest *request,
+    crane::grpc::ResetUserCredentialReply *response) {
+  auto extract_result = CheckCertAllowedAndExtractUIDFromCert_(context);
+  if (!extract_result) {
+    response->set_ok(false);
+    response->set_reason(crane::grpc::ErrCode::ERR_PERMISSION_USER);
+    return grpc::Status::OK;
+  }
+
+  uint32_t uid = extract_result.value();
+
+  auto result =
+      g_account_manager->ResetUserCertificate(uid, request->username());
+  if (!result) {
+    response->set_ok(false);
+    response->set_reason(result.error());
+  } else {
+    response->set_ok(true);
+  }
+
+  return grpc::Status::OK;
+}
+
 grpc::Status CraneCtldServiceImpl::QueryClusterInfo(
     grpc::ServerContext *context,
     const crane::grpc::QueryClusterInfoRequest *request,
@@ -872,7 +897,8 @@ CraneCtldServiceImpl::CheckCertAllowedAndExtractUIDFromCert_(
   auto result = util::ParseCertificate(certificate);
   if (!result) return std::unexpected(false);
 
-  if (!g_vault_client->IsCertAllowed(result.value().second)) return false;
+  if (!g_vault_client->IsCertAllowed(result.value().second))
+    return std::unexpected(false);
 
   std::vector<std::string> cn_parts = absl::StrSplit(result.value().first, '.');
   if (cn_parts.size() != 3 || cn_parts[0].empty())
