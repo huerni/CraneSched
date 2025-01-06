@@ -171,6 +171,9 @@ void ParseConfig(int argc, char** argv) {
       if (config["CompressedRpc"])
         g_config.CompressedRpc = config["CompressedRpc"].as<bool>();
 
+      if (config["DomainSuffix"])
+        g_config.DomainSuffix = config["DomainSuffix"].as<std::string>();
+
       if (config["UseTls"] && config["UseTls"].as<bool>()) {
         const auto& ssl_config = config["SSL"];
 
@@ -181,10 +184,6 @@ void ParseConfig(int argc, char** argv) {
             g_config.ListenConf.TlsCerts.InternalClientTlsCerts;
         ClientCertificateConfig& cfoed_client_certs =
             g_config.ListenConf.TlsCerts.CforedClientTlsCerts;
-
-        if (ssl_config["DomainSuffix"])
-          g_config.ListenConf.TlsCerts.DomainSuffix =
-              ssl_config["DomainSuffix"].as<std::string>();
 
         if (ssl_config["InternalCaFilePath"]) {
           std::string internalCaFilePath =
