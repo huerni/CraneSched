@@ -108,6 +108,7 @@ struct Config {
     std::string Addr;
     std::string Port;
     std::string Token;
+    bool Tls;
     std::string DomainSuffix;
     std::unordered_set<std::string> AllowedNodes;
 
