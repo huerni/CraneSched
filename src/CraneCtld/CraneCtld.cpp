@@ -29,10 +29,13 @@
 #include "AccountManager.h"
 #include "CranedKeeper.h"
 #include "CranedMetaContainer.h"
+#include "CtldForCforedServer.h"
+#include "CtldForCranedServer.h"
 #include "CtldGrpcServer.h"
 #include "CtldPublicDefs.h"
 #include "DbClient.h"
 #include "EmbeddedDbClient.h"
+#include "SignServer.h"
 #include "TaskScheduler.h"
 #include "crane/Network.h"
 #include "crane/PluginClient.h"
@@ -157,6 +160,13 @@ void ParseConfig(int argc, char** argv) {
       else
         g_config.ListenConf.CraneCtldForCforedListenPort =
             kCtldForCforedDefaultPort;
+
+      if (config["CraneCtldForSignListenPort"])
+        g_config.ListenConf.CraneCtldForSignListenPort =
+            config["CraneCtldForSignListenPort"].as<std::string>();
+      else
+        g_config.ListenConf.CraneCtldForSignListenPort =
+            kCtldForSignDefaultPort;
 
       if (config["CompressedRpc"])
         g_config.CompressedRpc = config["CompressedRpc"].as<bool>();
@@ -320,10 +330,6 @@ void ParseConfig(int argc, char** argv) {
           CRANE_ERROR("vault token path is empty");
           std::exit(1);
         }
-
-        if (vault_config["DomainSuffix"])
-          g_config.VaultConf.DomainSuffix =
-              vault_config["DomainSuffix"].as<std::string>();
 
         if (vault_config["Nodes"]) {
           std::string nodes = vault_config["Nodes"].as<std::string>();
@@ -965,6 +971,8 @@ void InitializeCtldGlobalVariables() {
 
   g_ctld_for_cfored_server =
       std::make_unique<Ctld::CtldForCforedServer>(g_config.ListenConf);
+
+  g_sign_server = std::make_unique<Ctld::SignServer>(g_config.ListenConf);
 }
 
 void CreateFolders() {
@@ -999,6 +1007,8 @@ int StartServer() {
   g_ctld_for_craned_server->Wait();
 
   g_ctld_for_cfored_server->Wait();
+
+  g_sign_server->Wait();
 
   DestroyCtldGlobalVariables();
 
