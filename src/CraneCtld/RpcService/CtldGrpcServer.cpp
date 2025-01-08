@@ -40,7 +40,7 @@ grpc::Status CraneCtldServiceImpl::SubmitBatchTask(
   if (!extract_result) {
     response->set_ok(false);
     response->set_reason("Permission Denied.");
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -88,7 +88,7 @@ grpc::Status CraneCtldServiceImpl::SubmitBatchTasks(
     for (int i = 0; i < task_count; i++) {
       response->mutable_reason_list()->Add("Permission Denied.");
     }
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -123,7 +123,7 @@ grpc::Status CraneCtldServiceImpl::CancelTask(
       response->add_not_cancelled_tasks(task_id);
       response->add_not_cancelled_reasons("Permission Denied.");
     }
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -144,7 +144,8 @@ grpc::Status CraneCtldServiceImpl::QueryCranedInfo(
     const crane::grpc::QueryCranedInfoRequest *request,
     crane::grpc::QueryCranedInfoReply *response) {
   auto extract_result = CheckCertAllowedAndExtractUIDFromCert_(context);
-  if (!extract_result) return grpc::Status::OK;
+  if (!extract_result)
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
 
   if (request->craned_name().empty()) {
     *response = g_meta_container->QueryAllCranedInfo();
@@ -160,7 +161,8 @@ grpc::Status CraneCtldServiceImpl::QueryPartitionInfo(
     const crane::grpc::QueryPartitionInfoRequest *request,
     crane::grpc::QueryPartitionInfoReply *response) {
   auto extract_result = CheckCertAllowedAndExtractUIDFromCert_(context);
-  if (!extract_result) return grpc::Status::OK;
+  if (!extract_result)
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
 
   if (request->partition_name().empty()) {
     *response = g_meta_container->QueryAllPartitionInfo();
@@ -181,7 +183,7 @@ grpc::Status CraneCtldServiceImpl::ModifyTask(
       response->add_not_modified_tasks(task_id);
       response->add_not_modified_reasons("Permission Denied.");
     }
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -274,7 +276,7 @@ grpc::Status CraneCtldServiceImpl::ModifyNode(
       response->add_not_modified_nodes(crane_id);
       response->add_not_modified_reasons("Permission Denied.");
     }
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -345,7 +347,7 @@ grpc::Status CraneCtldServiceImpl::AddAccount(
   if (!extract_result) {
     response->set_ok(false);
     response->set_reason(crane::grpc::ErrCode::ERR_INVALID_UID);
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -382,7 +384,7 @@ grpc::Status CraneCtldServiceImpl::AddUser(
   if (!extract_result) {
     response->set_ok(false);
     response->set_reason(crane::grpc::ErrCode::ERR_INVALID_UID);
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -432,7 +434,7 @@ grpc::Status CraneCtldServiceImpl::AddQos(
   if (!extract_result) {
     response->set_ok(false);
     response->set_reason(crane::grpc::ErrCode::ERR_INVALID_UID);
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -474,7 +476,7 @@ grpc::Status CraneCtldServiceImpl::ModifyAccount(
   if (!extract_result) {
     response->set_ok(false);
     response->set_reason(crane::grpc::ErrCode::ERR_INVALID_UID);
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -500,7 +502,7 @@ grpc::Status CraneCtldServiceImpl::ModifyUser(
   if (!extract_result) {
     response->set_ok(false);
     response->set_reason(crane::grpc::ErrCode::ERR_INVALID_UID);
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -564,7 +566,7 @@ grpc::Status CraneCtldServiceImpl::ModifyQos(
   if (!extract_result) {
     response->set_ok(false);
     response->set_reason(crane::grpc::ErrCode::ERR_INVALID_UID);
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -590,7 +592,7 @@ grpc::Status CraneCtldServiceImpl::QueryAccountInfo(
   if (!extract_result) {
     response->set_ok(false);
     response->set_reason(crane::grpc::ErrCode::ERR_INVALID_UID);
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -652,7 +654,7 @@ grpc::Status CraneCtldServiceImpl::QueryUserInfo(
   if (!extract_result) {
     response->set_ok(false);
     response->set_reason(crane::grpc::ErrCode::ERR_PERMISSION_USER);
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -718,7 +720,7 @@ grpc::Status CraneCtldServiceImpl::QueryQosInfo(
   if (!extract_result) {
     response->set_ok(false);
     response->set_reason(crane::grpc::ErrCode::ERR_PERMISSION_USER);
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -755,7 +757,7 @@ grpc::Status CraneCtldServiceImpl::DeleteAccount(
   if (!extract_result) {
     response->set_ok(false);
     response->set_reason(crane::grpc::ErrCode::ERR_PERMISSION_USER);
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -777,7 +779,7 @@ grpc::Status CraneCtldServiceImpl::DeleteUser(
   if (!extract_result) {
     response->set_ok(false);
     response->set_reason(crane::grpc::ErrCode::ERR_PERMISSION_USER);
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -800,7 +802,7 @@ grpc::Status CraneCtldServiceImpl::DeleteQos(
   if (!extract_result) {
     response->set_ok(false);
     response->set_reason(crane::grpc::ErrCode::ERR_PERMISSION_USER);
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -824,7 +826,7 @@ grpc::Status CraneCtldServiceImpl::BlockAccountOrUser(
   if (!extract_result) {
     response->set_ok(false);
     response->set_reason(crane::grpc::ErrCode::ERR_PERMISSION_USER);
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -861,7 +863,7 @@ grpc::Status CraneCtldServiceImpl::ResetUserCredential(
   if (!extract_result) {
     response->set_ok(false);
     response->set_reason(crane::grpc::ErrCode::ERR_PERMISSION_USER);
-    return grpc::Status::OK;
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
   }
 
   uint32_t uid = extract_result.value();
@@ -888,7 +890,8 @@ grpc::Status CraneCtldServiceImpl::QueryClusterInfo(
     const crane::grpc::QueryClusterInfoRequest *request,
     crane::grpc::QueryClusterInfoReply *response) {
   auto extract_result = CheckCertAllowedAndExtractUIDFromCert_(context);
-  if (!extract_result) return grpc::Status::OK;
+  if (!extract_result)
+    return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
 
   *response = g_meta_container->QueryClusterInfo(*request);
   return grpc::Status::OK;
