@@ -81,17 +81,28 @@ EnvMap TaskInstance::GetTaskEnvMap() const {
 
   env_map.emplace("CRANE_JOB_ID", std::to_string(this->task.task_id()));
 
-  if (this->IsCrun() && !this->task.interactive_meta().term_env().empty()) {
-    env_map.emplace("TERM", this->task.interactive_meta().term_env());
-  }
-
   int64_t time_limit_sec = this->task.time_limit().seconds();
-  int hours = time_limit_sec / 3600;
-  int minutes = (time_limit_sec % 3600) / 60;
-  int seconds = time_limit_sec % 60;
+  int64_t hours = time_limit_sec / 3600;
+  int64_t minutes = (time_limit_sec % 3600) / 60;
+  int64_t seconds = time_limit_sec % 60;
   std::string time_limit =
       fmt::format("{:0>2}:{:0>2}:{:0>2}", hours, minutes, seconds);
   env_map.emplace("CRANE_TIMELIMIT", time_limit);
+
+  if (this->IsCrun()) {
+    auto const& ia_meta = this->task.interactive_meta();
+    if (!ia_meta.term_env().empty())
+      env_map.emplace("TERM", this->task.interactive_meta().term_env());
+
+    if (ia_meta.x11()) {
+      auto* instance_ia_meta =
+          dynamic_cast<CrunMetaInTaskInstance*>(this->meta.get());
+      CRANE_ASSERT(instance_ia_meta != nullptr);
+      env_map.emplace("DISPLAY",
+                      fmt::sprintf("localhost:%d", instance_ia_meta->x11_port));
+    }
+  }
+
   return env_map;
 }
 
@@ -832,19 +843,25 @@ CraneErr TaskManager::SpawnProcessInInstance_(TaskInstance* instance,
         CgroupManager::GetResourceEnvMapByResInNode(res_in_node.value());
 
     if (clearenv()) {
-      fmt::print(stderr, "[Craned Subprocess] Warnning: clearenv() failed.\n");
+      fmt::print(stderr, "[Craned Subprocess] Warning: clearenv() failed.\n");
     }
 
-    auto FuncSetEnv =
-        [](const std::unordered_map<std::string, std::string>& v) {
-          for (const auto& [name, value] : v)
-            if (setenv(name.c_str(), value.c_str(), 1))
-              fmt::print(
-                  stderr,
-                  "[Craned Subprocess] Warnning: setenv() for {}={} failed.\n",
-                  name, value);
-        };
+    // Set up x11 authority file if enabled.
+    if (instance->IsCrun() && instance->task.interactive_meta().x11()) {
+      const std::string& cookie =
+          instance->task.interactive_meta().x11_meta().cookie();
+      std::string x11_auth_path =
+          fmt::sprintf("%s/.Xauthority", instance->pwd_entry.HomeDir());
+    }
 
+    auto FuncSetEnv = [](const EnvMap& v) {
+      for (const auto& [name, value] : v)
+        if (setenv(name.c_str(), value.c_str(), 1))
+          fmt::print(
+              stderr,
+              "[Craned Subprocess] Warning: setenv() for {}={} failed.\n", name,
+              value);
+    };
     FuncSetEnv(task_env_map);
     FuncSetEnv(res_env_map);
 

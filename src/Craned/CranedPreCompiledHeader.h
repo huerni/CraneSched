@@ -73,6 +73,9 @@
 // fpm
 #include <fpm/fixed.hpp>
 
+// fmt
+#include <spdlog/fmt/bundled/printf.h>
+
 // Concurrent queue
 #include <concurrentqueue/concurrentqueue.h>
 

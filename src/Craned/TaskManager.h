@@ -119,8 +119,10 @@ struct BatchMetaInTaskInstance : MetaInTaskInstance {
 };
 
 struct CrunMetaInTaskInstance : MetaInTaskInstance {
-  int msg_fd;
   ~CrunMetaInTaskInstance() override = default;
+
+  int msg_fd;
+  uint16_t x11_port;
 };
 
 // also arg for EvSigchldTimerCb_
