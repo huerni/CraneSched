@@ -123,6 +123,7 @@ struct CrunMetaInTaskInstance : MetaInTaskInstance {
 
   int msg_fd;
   uint16_t x11_port;
+  std::string x11_auth_path;
 };
 
 // also arg for EvSigchldTimerCb_

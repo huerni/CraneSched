@@ -98,8 +98,10 @@ EnvMap TaskInstance::GetTaskEnvMap() const {
       auto* instance_ia_meta =
           dynamic_cast<CrunMetaInTaskInstance*>(this->meta.get());
       CRANE_ASSERT(instance_ia_meta != nullptr);
+
       env_map.emplace("DISPLAY",
                       fmt::sprintf("localhost:%d", instance_ia_meta->x11_port));
+      env_map.emplace("XAUTHORITY", instance_ia_meta->x11_auth_path);
     }
   }
 
@@ -838,20 +840,52 @@ CraneErr TaskManager::SpawnProcessInInstance_(TaskInstance* instance,
     if (instance->task.type() == crane::grpc::Batch) close(0);
     util::os::CloseFdFrom(3);
 
+    // Set up x11 authority file if enabled.
+    if (instance->IsCrun() && instance->task.interactive_meta().x11()) {
+      auto* inst_ia_meta =
+          dynamic_cast<CrunMetaInTaskInstance*>(instance->meta.get());
+
+      const std::string& cookie =
+          instance->task.interactive_meta().x11_meta().cookie();
+      inst_ia_meta->x11_auth_path =
+          fmt::sprintf("%s/.Xauthority-XXXXXX", instance->pwd_entry.HomeDir());
+
+      int xauth_fd = mkstemp(inst_ia_meta->x11_auth_path.data());
+      if (xauth_fd == -1) {
+        fmt::print(stderr, "[Craned Subprocess] mkstemp() failed: {}\n",
+                   strerror(errno));
+        std::abort();
+      }
+
+      std::string display = fmt::sprintf("%s/unix:%u", g_config.Hostname);
+
+      std::vector<const char*> xauth_argv{
+          "xauth",
+          "-v",
+          "-f",
+          inst_ia_meta->x11_auth_path.c_str(),
+          "add",
+          display.c_str(),
+          "MIT-MAGIC-COOKIE-1",
+          instance->task.interactive_meta().x11_meta().cookie().c_str(),
+          nullptr,
+      };
+
+      subprocess_s subprocess;
+      int result = subprocess_create(xauth_argv.data(), 0, &subprocess);
+      if (0 != result) {
+        fmt::print(stderr, "[Craned Subprocess] xauth failed.\n");
+        std::abort();
+      }
+    }
+
     EnvMap task_env_map = instance->GetTaskEnvMap();
     EnvMap res_env_map =
         CgroupManager::GetResourceEnvMapByResInNode(res_in_node.value());
 
+    // clearenv() should be called just before fork!
     if (clearenv()) {
       fmt::print(stderr, "[Craned Subprocess] Warning: clearenv() failed.\n");
-    }
-
-    // Set up x11 authority file if enabled.
-    if (instance->IsCrun() && instance->task.interactive_meta().x11()) {
-      const std::string& cookie =
-          instance->task.interactive_meta().x11_meta().cookie();
-      std::string x11_auth_path =
-          fmt::sprintf("%s/.Xauthority", instance->pwd_entry.HomeDir());
     }
 
     auto FuncSetEnv = [](const EnvMap& v) {
