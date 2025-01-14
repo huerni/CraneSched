@@ -226,6 +226,7 @@ struct InteractiveMetaInTask {
   std::string sh_script;
   std::string term_env;
   bool pty;
+  bool x11;
   std::function<void(task_id_t, std::string const&,
                      std::list<std::string> const&)>
       cb_task_res_allocated;
@@ -492,6 +493,7 @@ struct TaskInCtld {
           crane::grpc::InteractiveTaskType::Crun) {
         InteractiveMeta.term_env = val.interactive_meta().term_env();
         InteractiveMeta.pty = val.interactive_meta().pty();
+        InteractiveMeta.x11 = val.interactive_meta().x11();
       }
     }
 

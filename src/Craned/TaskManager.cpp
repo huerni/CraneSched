@@ -607,7 +607,8 @@ CraneErr TaskManager::SpawnProcessInInstance_(TaskInstance* instance,
       crun_meta->msg_fd = crun_io_sock_pair[0];
       child_pid = fork();
     }
-
+    CRANE_DEBUG("[Task #{}] Launch crun x11: {}", instance->task.task_id(),
+                instance->task.interactive_meta().x11());
     if (instance->task.interactive_meta().x11()) {
       auto x11_pair = crane::GetX11Socket();
       if (x11_pair.first == -1) return CraneErr::kSystemErr;
