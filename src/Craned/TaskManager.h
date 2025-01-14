@@ -143,12 +143,26 @@ struct TaskInstance {
     }
 
     if (this->IsCrun()) {
-      close(dynamic_cast<CrunMetaInTaskInstance*>(meta.get())->msg_fd);
+      auto* crun_meta = GetCrunMeta();
+
+      close(crun_meta->msg_fd);
+      if (!crun_meta->x11_auth_path.empty() &&
+          !absl::EndsWith(crun_meta->x11_auth_path, "XXXXXX")) {
+        std::error_code ec;
+        bool ok = std::filesystem::remove(crun_meta->x11_auth_path, ec);
+        if (!ok)
+          CRANE_ERROR("Failed to remove x11 auth {} for task #{}: {}",
+                      crun_meta->x11_auth_path, this->task.task_id(),
+                      ec.message());
+      }
     }
   }
 
   bool IsCrun() const;
   bool IsCalloc() const;
+
+  CrunMetaInTaskInstance* GetCrunMeta() const;
+
   EnvMap GetTaskEnvMap() const;
 
   crane::grpc::TaskToD task;

@@ -42,6 +42,10 @@ bool TaskInstance::IsCalloc() const {
              crane::grpc::Calloc;
 }
 
+CrunMetaInTaskInstance* TaskInstance::GetCrunMeta() const {
+  return dynamic_cast<CrunMetaInTaskInstance*>(this->meta.get());
+}
+
 EnvMap TaskInstance::GetTaskEnvMap() const {
   std::unordered_map<std::string, std::string> env_map;
   // Crane Env will override user task env;
@@ -551,6 +555,29 @@ CraneErr TaskManager::SpawnProcessInInstance_(TaskInstance* instance,
     return CraneErr::kCgroupError;
   }
 
+  if (instance->IsCrun() && instance->task.interactive_meta().x11()) {
+    auto* inst_crun_meta = instance->GetCrunMeta();
+
+    const std::string& cookie =
+        instance->task.interactive_meta().x11_meta().cookie();
+    inst_crun_meta->x11_auth_path =
+        fmt::sprintf("%s/.Xauthority-XXXXXX", instance->pwd_entry.HomeDir());
+
+    // Default file permission is 0600.
+    int xauth_fd = mkstemp(inst_crun_meta->x11_auth_path.data());
+    if (xauth_fd == -1) {
+      CRANE_ERROR("mkstemp() for xauth file failed: {}\n", strerror(errno));
+      return CraneErr::kSystemErr;
+    }
+
+    int ret =
+        fchown(xauth_fd, instance->pwd_entry.Uid(), instance->pwd_entry.Gid());
+    if (ret == -1) {
+      CRANE_ERROR("fchown() for xauth file failed: {}\n", strerror(errno));
+      return CraneErr::kSystemErr;
+    }
+  }
+
   if (socketpair(AF_UNIX, SOCK_STREAM, 0, ctrl_sock_pair) != 0) {
     CRANE_ERROR("[Task #{}] Failed to create socket pair: {}",
                 instance->task.task_id(), strerror(errno));
@@ -851,20 +878,7 @@ CraneErr TaskManager::SpawnProcessInInstance_(TaskInstance* instance,
 
     // Set up x11 authority file if enabled.
     if (instance->IsCrun() && instance->task.interactive_meta().x11()) {
-      auto* inst_ia_meta =
-          dynamic_cast<CrunMetaInTaskInstance*>(instance->meta.get());
-
-      const std::string& cookie =
-          instance->task.interactive_meta().x11_meta().cookie();
-      inst_ia_meta->x11_auth_path =
-          fmt::sprintf("%s/.Xauthority-XXXXXX", instance->pwd_entry.HomeDir());
-
-      int xauth_fd = mkstemp(inst_ia_meta->x11_auth_path.data());
-      if (xauth_fd == -1) {
-        fmt::print(stderr, "[Craned Subprocess] mkstemp() failed: {}\n",
-                   strerror(errno));
-        std::abort();
-      }
+      auto* inst_crun_meta = instance->GetCrunMeta();
 
       std::string display = fmt::sprintf("%s/unix:%u", g_config.Hostname);
 
@@ -872,7 +886,7 @@ CraneErr TaskManager::SpawnProcessInInstance_(TaskInstance* instance,
           "xauth",
           "-v",
           "-f",
-          inst_ia_meta->x11_auth_path.c_str(),
+          inst_crun_meta->x11_auth_path.c_str(),
           "add",
           display.c_str(),
           "MIT-MAGIC-COOKIE-1",
@@ -935,7 +949,7 @@ CraneErr TaskManager::SpawnProcessInInstance_(TaskInstance* instance,
                strerror(errno));
     // TODO: See https://tldp.org/LDP/abs/html/exitcodes.html, return standard
     //  exit codes
-    abort();
+    std::abort();
   }
 }
 
