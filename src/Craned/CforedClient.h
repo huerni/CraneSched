@@ -40,7 +40,13 @@ class CforedClient {
   void InitTaskFwdAndSetInputCb(
       task_id_t task_id, std::function<bool(const std::string&)> task_input_cb);
 
+  void InitTaskX11FwdAndSetInputCb(
+      task_id_t task_id,
+      std::function<bool(const std::string&)> task_x11_input_cb);
+
   void TaskOutPutForward(task_id_t task_id, const std::string& msg);
+
+  void TaskX11OutPutForward(task_id_t task_id, const std::string& msg);
 
   bool TaskOutputFinish(task_id_t task_id);
 
@@ -49,6 +55,7 @@ class CforedClient {
  private:
   struct TaskFwdMeta {
     std::function<bool(const std::string&)> input_cb;
+    std::function<bool(const std::string&)> x11_input_cb;
     bool input_stopped{false};
     bool output_stopped{false};
     bool proc_stopped{false};
@@ -60,6 +67,9 @@ class CforedClient {
       std::atomic<bool>* write_pending);
 
   ConcurrentQueue<std::pair<task_id_t, std::string /*msg*/>> m_output_queue_;
+  ConcurrentQueue<std::pair<task_id_t, std::string /*msg*/>>
+      m_x11_output_queue_;
+
   std::thread m_fwd_thread_;
   std::atomic<bool> m_stopped_{false};
 
@@ -86,7 +96,7 @@ class CforedManager {
   bool Init();
 
   void RegisterIOForward(std::string const& cfored, task_id_t task_id, int fd,
-                         bool pty);
+                         bool pty, int x11_fd);
   void TaskProcOnCforedStopped(std::string const& cfored, task_id_t task_id);
 
  private:
@@ -95,6 +105,7 @@ class CforedManager {
     task_id_t task_id;
     int fd;
     bool pty;
+    int x11_fd;
   };
 
   struct TaskStopElem {

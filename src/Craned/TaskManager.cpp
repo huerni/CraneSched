@@ -559,6 +559,7 @@ CraneErr TaskManager::SpawnProcessInInstance_(TaskInstance* instance,
 
   pid_t child_pid;
   bool launch_pty{false};
+  int x11_fd = -1;
 
   if (instance->IsCrun()) {
     auto* crun_meta =
@@ -579,6 +580,14 @@ CraneErr TaskManager::SpawnProcessInInstance_(TaskInstance* instance,
       crun_meta->msg_fd = crun_io_sock_pair[0];
       child_pid = fork();
     }
+
+    if (instance->task.interactive_meta().x11()) {
+      auto x11_pair = crane::GetX11Socket();
+      if (x11_pair.first == -1) return CraneErr::kSystemErr;
+      x11_fd = x11_pair.first;
+      crun_meta->x11_port = x11_pair.second;
+    }
+
   } else {
     child_pid = fork();
   }
@@ -598,7 +607,7 @@ CraneErr TaskManager::SpawnProcessInInstance_(TaskInstance* instance,
       auto* meta = dynamic_cast<CrunMetaInTaskInstance*>(instance->meta.get());
       g_cfored_manager->RegisterIOForward(
           instance->task.interactive_meta().cfored_name(),
-          instance->task.task_id(), meta->msg_fd, launch_pty);
+          instance->task.task_id(), meta->msg_fd, launch_pty, x11_fd);
     }
 
     int ctrl_fd = ctrl_sock_pair[0];

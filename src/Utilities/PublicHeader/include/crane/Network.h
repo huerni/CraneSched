@@ -36,6 +36,8 @@
 using ipv4_t = uint32_t;
 using ipv6_t = absl::uint128;
 
+using SocketPortPair = std::pair<int, uint32_t>;
+
 namespace crane {
 
 void InitializeNetworkFunctions();
@@ -62,5 +64,7 @@ std::string Ipv6ToStr(const ipv6_t& addr);
 int GetIpAddrVer(const std::string& ip);
 
 bool FindTcpInodeByPort(const std::string& tcp_path, int port, ino_t* inode);
+
+SocketPortPair GetX11Socket();
 
 }  // namespace crane
