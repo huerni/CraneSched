@@ -11,21 +11,17 @@ DbConfigPath: /etc/crane/database.yaml
 CraneBaseDir: /var/crane/
 
 # Tls settings
-UseTls: true
+UseTls: false
 SSL:
-  CranectldInternalCertFilePath: /etc/crane/tls/cranectld.pem
-  CranectldInternalKeyFilePath: /etc/crane/tls/cranectld.key
+  CranectldInternalCertFilePath: /etc/crane/tls/internal.pem
+  CranectldInternalKeyFilePath: /etc/crane/tls/internal.key
   CranedCertFilePath: /etc/crane/tls/craned.pem
   CranedKeyFilePath: /etc/crane/tls/craned.key
   CforedCertFilePath: /etc/crane/tls/cfored.pem
   CforedKeyFilePath: /etc/crane/tls/cfored.key
   InternalCaFilePath: /etc/crane/tls/internal_ca.pem
 
-Vault:
-  Addr: 127.0.0.1
-  Port: 8200
-  TokenPath: /etc/crane/vault_token.txt  # Token cannot be leaked
-  Tls: false
+PKI:
 #  Nodes: "cn[15-18]"
   ExternalCertFilePath: /etc/crane/pki/external.pem
   ExternalKeyFilePath: /etc/crane/pki/external.key

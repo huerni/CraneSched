@@ -105,15 +105,19 @@ struct Config {
   struct VaultConfig {
     std::string Addr;
     std::string Port;
-    std::string Token;
+    std::string Username;
+    std::string Password;
     bool Tls;
-    std::unordered_set<std::string> AllowedNodes;
+  };
+  VaultConfig VaultConf;
 
+  struct PkiConfig {
+    std::unordered_set<std::string> AllowedNodes;
     ServerCertificateConfig ExternalCerts;
     CACertificateConfig ExternalCACerts;
   };
+  PkiConfig PkiConf;
 
-  VaultConfig VaultConf;
   std::string DomainSuffix;
 
   struct Priority {

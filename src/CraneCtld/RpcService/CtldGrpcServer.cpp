@@ -923,13 +923,13 @@ CtldServer::CtldServer() : m_service_impl_(nullptr) {
 
   grpc::ServerBuilder builder;
   const auto &listen_conf = g_config.ListenConf;
-  const auto &vault_conf = g_config.VaultConf;
+  const auto &pki_conf = g_config.PkiConf;
   if (g_config.CompressedRpc) ServerBuilderSetCompression(&builder);
 
   std::string cranectld_listen_addr = listen_conf.CraneCtldListenAddr;
   ServerBuilderAddmTcpTlsListeningPort(
       &builder, cranectld_listen_addr, listen_conf.CraneCtldListenPort,
-      vault_conf.ExternalCerts, vault_conf.ExternalCACerts.CACertContent);
+      pki_conf.ExternalCerts, pki_conf.ExternalCACerts.CACertContent);
 
   builder.RegisterService(m_service_impl_.get());
 

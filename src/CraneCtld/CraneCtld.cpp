@@ -191,7 +191,7 @@ void ParseConfig(int argc, char** argv) {
             g_config.ListenConf.TlsCerts.InternalCaContent =
                 util::ReadFileIntoString(internalCaFilePath);
           } catch (const std::exception& e) {
-            CRANE_ERROR("Read cert file error: {}", e.what());
+            CRANE_ERROR("Read InternalCa file error: {}", e.what());
             std::exit(1);
           }
           if (g_config.ListenConf.TlsCerts.InternalCaContent.empty()) {
@@ -212,7 +212,7 @@ void ParseConfig(int argc, char** argv) {
             internal_certs.ServerCertContent =
                 util::ReadFileIntoString(internal_certs.ServerCertFilePath);
           } catch (const std::exception& e) {
-            CRANE_ERROR("Read cert file error: {}", e.what());
+            CRANE_ERROR("Read InternalCert file error: {}", e.what());
             std::exit(1);
           }
           if (internal_certs.ServerCertContent.empty()) {
@@ -235,7 +235,7 @@ void ParseConfig(int argc, char** argv) {
             internal_certs.ServerKeyContent =
                 util::ReadFileIntoString(internal_certs.ServerKeyFilePath);
           } catch (const std::exception& e) {
-            CRANE_ERROR("Read cert file error: {}", e.what());
+            CRANE_ERROR("Read InternalKey file error: {}", e.what());
             std::exit(1);
           }
           if (internal_certs.ServerKeyContent.empty()) {
@@ -258,7 +258,7 @@ void ParseConfig(int argc, char** argv) {
             craned_certs.ClientCertContent =
                 util::ReadFileIntoString(craned_certs.ClientCertFilePath);
           } catch (const std::exception& e) {
-            CRANE_ERROR("Read cert file error: {}", e.what());
+            CRANE_ERROR("Read CranedCert file error: {}", e.what());
             std::exit(1);
           }
           if (craned_certs.ClientCertContent.empty()) {
@@ -279,7 +279,7 @@ void ParseConfig(int argc, char** argv) {
             cfored_certs.ClientCertContent =
                 util::ReadFileIntoString(cfored_certs.ClientCertFilePath);
           } catch (const std::exception& e) {
-            CRANE_ERROR("Read cert file error: {}", e.what());
+            CRANE_ERROR("Read CforedCert file error: {}", e.what());
             std::exit(1);
           }
           if (cfored_certs.ClientCertContent.empty()) {
@@ -299,53 +299,29 @@ void ParseConfig(int argc, char** argv) {
       if (config["DomainSuffix"])
         g_config.DomainSuffix = config["DomainSuffix"].as<std::string>();
 
-      if (config["Vault"]) {
-        const auto& vault_config = config["Vault"];
+      if (config["PKI"]) {
+        const auto& pki_config = config["PKI"];
 
         ServerCertificateConfig& external_certs =
-            g_config.VaultConf.ExternalCerts;
+            g_config.PkiConf.ExternalCerts;
         CACertificateConfig& external_ca_certs =
-            g_config.VaultConf.ExternalCACerts;
+            g_config.PkiConf.ExternalCACerts;
 
-        if (vault_config["Addr"])
-          g_config.VaultConf.Addr = vault_config["Addr"].as<std::string>();
-
-        if (vault_config["Port"])
-          g_config.VaultConf.Port = vault_config["Port"].as<std::string>();
-
-        if (vault_config["Tls"])
-          g_config.VaultConf.Tls = vault_config["Tls"].as<bool>();
-        else
-          g_config.VaultConf.Tls = false;
-
-        if (vault_config["TokenPath"]) {
-          std::string token_path = vault_config["TokenPath"].as<std::string>();
-          try {
-            g_config.VaultConf.Token = util::ReadFileIntoString(token_path);
-          } catch (const std::exception& e) {
-            CRANE_ERROR("Read vault token file error: {}", e.what());
-            std::exit(1);
-          }
-        } else {
-          CRANE_ERROR("vault token path is empty");
-          std::exit(1);
-        }
-
-        if (vault_config["Nodes"]) {
-          std::string nodes = vault_config["Nodes"].as<std::string>();
+        if (pki_config["Nodes"]) {
+          std::string nodes = pki_config["Nodes"].as<std::string>();
           std::list<std::string> name_list;
           if (!util::ParseHostList(absl::StripAsciiWhitespace(nodes).data(),
                                    &name_list)) {
             CRANE_ERROR("Illegal login node name string format.");
             std::exit(1);
           }
-          g_config.VaultConf.AllowedNodes = std::unordered_set<std::string>(
+          g_config.PkiConf.AllowedNodes = std::unordered_set<std::string>(
               name_list.begin(), name_list.end());
         }
 
-        if (vault_config["ExternalCertFilePath"]) {
+        if (pki_config["ExternalCertFilePath"]) {
           external_certs.ServerCertFilePath =
-              vault_config["ExternalCertFilePath"].as<std::string>();
+              pki_config["ExternalCertFilePath"].as<std::string>();
 
           try {
             external_certs.ServerCertContent =
@@ -359,9 +335,9 @@ void ParseConfig(int argc, char** argv) {
           std::exit(1);
         }
 
-        if (vault_config["ExternalKeyFilePath"]) {
+        if (pki_config["ExternalKeyFilePath"]) {
           external_certs.ServerKeyFilePath =
-              vault_config["ExternalKeyFilePath"].as<std::string>();
+              pki_config["ExternalKeyFilePath"].as<std::string>();
 
           try {
             external_certs.ServerKeyContent =
@@ -375,9 +351,9 @@ void ParseConfig(int argc, char** argv) {
           std::exit(1);
         }
 
-        if (vault_config["ExternalCAFilePath"]) {
+        if (pki_config["ExternalCAFilePath"]) {
           external_ca_certs.CACertFilePath =
-              vault_config["ExternalCAFilePath"].as<std::string>();
+              pki_config["ExternalCAFilePath"].as<std::string>();
 
           try {
             external_ca_certs.CACertContent =
@@ -788,6 +764,42 @@ void ParseConfig(int argc, char** argv) {
         g_config.DbName = config["DbName"].as<std::string>();
       else
         g_config.DbName = "crane_db";
+
+      if (config["Vault"]) {
+        const auto& vault_config = config["Vault"];
+
+        if (vault_config["Addr"])
+          g_config.VaultConf.Addr = vault_config["Addr"].as<std::string>();
+        else
+          g_config.VaultConf.Addr = "127.0.0.1";
+
+        if (vault_config["Port"])
+          g_config.VaultConf.Port = vault_config["Port"].as<std::string>();
+        else
+          g_config.VaultConf.Port = "8200";
+
+        if (vault_config["Username"] && !config["Username"].IsNull())
+          g_config.VaultConf.Username =
+              vault_config["Username"].as<std::string>();
+        else {
+          CRANE_ERROR("Unknown Vault Username");
+          std::exit(1);
+        }
+
+        if (vault_config["Password"] && !config["Password"].IsNull())
+          g_config.VaultConf.Password =
+              vault_config["Password"].as<std::string>();
+        else {
+          CRANE_ERROR("Unknown Vault Password");
+          std::exit(1);
+        }
+
+        if (vault_config["Tls"] && !config["Tls"].IsNull())
+          g_config.VaultConf.Tls = vault_config["Tls"].as<bool>();
+        else
+          g_config.VaultConf.Tls = false;
+      }
+
     } catch (YAML::BadFile& e) {
       CRANE_CRITICAL("Can't open database config file {}: {}", db_config_path,
                      e.what());
@@ -869,8 +881,8 @@ void InitializeCtldGlobalVariables() {
   }
 
   g_vault_client = std::make_unique<vault::VaultClient>(
-      g_config.VaultConf.Token, g_config.VaultConf.Addr,
-      g_config.VaultConf.Port, g_config.VaultConf.Tls);
+      g_config.VaultConf.Username, g_config.VaultConf.Password,
+      g_config.VaultConf.Addr, g_config.VaultConf.Port, g_config.VaultConf.Tls);
   if (!g_vault_client->InitPki()) std::exit(1);
 
   // Account manager must be initialized before Task Scheduler

@@ -46,6 +46,9 @@ class VaultClient {
   VaultClient(const std::string& root_token, const std::string& address,
               const std::string& port, bool tls = false);
 
+  VaultClient(const std::string& username, const std::string& password,
+              const std::string& address, const std::string& port, bool tls = false);
+
   bool InitPki();
 
   std::expected<SignResponse, bool> Sign(const std::string& csr_content,
@@ -80,6 +83,21 @@ class VaultClient {
   std::string port_;
   bool tls_;
 };
+
+class UserPassStrategy : public Vault::AuthenticationStrategy {
+public:
+  UserPassStrategy(std::string username, std::string password);
+
+  std::optional<Vault::AuthenticationResponse>
+  authenticate(const Vault::Client &client) override;
+
+private:
+  static Vault::Url getUrl(const Vault::Client &client, const Vault::Path &username);
+
+  std::string username_;
+  std::string password_;
+};
+
 
 }  // namespace vault
 

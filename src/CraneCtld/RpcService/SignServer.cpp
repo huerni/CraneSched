@@ -26,7 +26,7 @@ grpc::Status SignServiceImpl::SignUserCertificate(
     grpc::ServerContext *context,
     const crane::grpc::SignUserCertificateRequest *request,
     crane::grpc::SignUserCertificateResponse *response) {
-  if (!g_config.VaultConf.AllowedNodes.empty()) {
+  if (!g_config.PkiConf.AllowedNodes.empty()) {
     std::string client_address = context->peer();
     std::vector<std::string> str_list = absl::StrSplit(client_address, ":");
     std::string hostname;
@@ -49,7 +49,7 @@ grpc::Status SignServiceImpl::SignUserCertificate(
 
     std::vector<std::string> name_list = absl::StrSplit(hostname, ".");
     if (!resolve_result ||
-        !g_config.VaultConf.AllowedNodes.contains(name_list[0])) {
+        !g_config.PkiConf.AllowedNodes.contains(name_list[0])) {
       response->set_ok(false);
       response->set_reason(crane::grpc::ErrCode::ERR_PERMISSION_USER);
       return grpc::Status::OK;
@@ -65,7 +65,7 @@ grpc::Status SignServiceImpl::SignUserCertificate(
     response->set_ok(true);
     response->set_certificate(result.value());
     response->set_external_certificate(
-        g_config.VaultConf.ExternalCACerts.CACertContent);
+        g_config.PkiConf.ExternalCerts.ServerCertContent);
   }
 
   return grpc::Status::OK;

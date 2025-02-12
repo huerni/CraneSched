@@ -41,6 +41,26 @@ VaultClient::VaultClient(const std::string& root_token,
       config, tokenStrategy, httpErrorCallback, responseCallback});
 }
 
+VaultClient::VaultClient(const std::string& username, const std::string& password,
+              const std::string& address, const std::string& port, bool tls)
+    : address_(address), port_(port), tls_(tls) {
+  UserPassStrategy user_pass_strategy{username, password};
+  Vault::Config config = Vault::ConfigBuilder()
+                             .withDebug(false)
+                             .withTlsEnabled(tls_)
+                             .withHost(Vault::Host{address_})
+                             .withPort(Vault::Port{port_})
+                             .build();
+  Vault::HttpErrorCallback httpErrorCallback = [&](std::string err) {
+    CRANE_DEBUG(err);
+  };
+  Vault::ResponseErrorCallback responseCallback = [&](Vault::HttpResponse err) {
+    CRANE_DEBUG("{} : {}", err.url.value(), err.body.value());
+  };
+  root_client_ = std::make_unique<Vault::Client>(Vault::Client{
+      config, user_pass_strategy, httpErrorCallback, responseCallback});
+}
+
 bool VaultClient::InitPki() {
   if (!root_client_->is_authenticated()) {
     CRANE_ERROR("Vault client is not authenticated");
@@ -165,5 +185,23 @@ Vault::Url VaultClient::GetUrl_(const std::string& base,
   return Vault::Url{(tls_ ? "https://" : "http://") + address_ + ":" + port_ +
                     base + path};
 }
+
+UserPassStrategy::UserPassStrategy(std::string username, std::string password)
+  : username_(std::move(username)), password_(std::move(password)) {}
+
+std::optional<Vault::AuthenticationResponse> UserPassStrategy::authenticate(const Vault::Client &client) {
+  return Vault::HttpConsumer::authenticate(
+      client, getUrl(client, Vault::Path{username_}), [&]() {
+        nlohmann::json j;
+        j = nlohmann::json::object();
+        j["password"] = password_;
+        return j.dump();
+      });
+}
+
+Vault::Url UserPassStrategy::getUrl(const Vault::Client &client, const Vault::Path &username) {
+  return client.getUrl("/v1/auth/userpass/login/", username);
+}
+
 
 }  // namespace vault
