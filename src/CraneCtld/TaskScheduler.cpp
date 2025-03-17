@@ -18,12 +18,16 @@
 
 #include "TaskScheduler.h"
 
+#include <cstddef>
+#include <cstdint>
+
 #include "AccountManager.h"
 #include "AccountMetaContainer.h"
 #include "CranedKeeper.h"
 #include "CranedMetaContainer.h"
 #include "CtldPublicDefs.h"
 #include "EmbeddedDbClient.h"
+#include "crane/Logger.h"
 #include "crane/PluginClient.h"
 #include "protos/PublicDefs.pb.h"
 
@@ -1044,7 +1048,25 @@ std::future<task_id_t> TaskScheduler::SubmitTaskAsync(
   std::promise<task_id_t> promise;
   std::future<task_id_t> future = promise.get_future();
 
+  // TODO: 完全复制信息
+  if (!task->task_array_info.array_inx.empty()) {
+    for (int i = task->task_array_info.array_task_cnt - 2; i >= 0; i--) {
+      auto task_copy = std::make_unique<TaskInCtld>();
+      task_copy->SetFieldsByTaskToCtld(task->TaskToCtld());
+      task_copy->SetArrayTaskId(task->task_array_info.array_task_list[i]);
+      task_copy->SetSubmitTime(task->SubmitTime());
+      task_copy->SetUsername(task->Username());
+      task_copy->account = task->account;
+      std::promise<task_id_t> sub_promise;
+      std::future<task_id_t> sub_future = sub_promise.get_future();
+      m_submit_task_queue_.enqueue(
+          {std::move(task_copy), std::move(sub_promise)});
+    }
+    task->SetArrayTaskId(task->task_array_info.max_array_task_id);
+  }
+  // FIXME: 主任务rejected时，子任务提交成功，无法找到主任务
   m_submit_task_queue_.enqueue({std::move(task), std::move(promise)});
+
   m_submit_task_async_handle_->send();
 
   return std::move(future);
@@ -1535,6 +1557,8 @@ void TaskScheduler::CleanSubmitQueueCb_() {
         accepted_tasks.begin(), accepted_size);
     if (accepted_actual_size == 0) break;
 
+    // TODO: 拆分数组任务，保证子任务提交成功时，主任务一定提交成功
+
     accepted_task_ptrs.reserve(accepted_actual_size);
 
     // The order of element inside the bulk is reverse.
@@ -1554,7 +1578,6 @@ void TaskScheduler::CleanSubmitQueueCb_() {
     }
 
     m_pending_task_map_mtx_.Lock();
-
     for (uint32_t i = 0; i < accepted_tasks.size(); i++) {
       uint32_t pos = accepted_tasks.size() - 1 - i;
       task_id_t id = accepted_tasks[pos].first->TaskId();
@@ -1823,7 +1846,8 @@ void TaskScheduler::QueryTasksInRam(
                                             request->filter_task_ids().end());
   auto task_rng_filter_id = [&](auto& it) {
     TaskInCtld& task = *it.second;
-    return no_task_ids_constraint || req_task_ids.contains(task.TaskId());
+    return no_task_ids_constraint || req_task_ids.contains(task.TaskId()) ||
+           req_task_ids.contains(task.ArrayJobId());
   };
 
   bool no_task_states_constraint = request->filter_task_states().empty();
@@ -2207,6 +2231,13 @@ void MinLoadFirst::NodeSelect(
     auto pending_task_it = pending_task_map->find(task_id);
     auto& task = pending_task_it->second;
 
+    // TODO: 调整主任务优先级，使得主任务优先级低于子任务
+    if (!task->task_array_info.array_inx.empty() &&
+        task->TaskId() == task->ArrayJobId() &&
+        task->task_array_info.array_task_cnt > 0) {
+      continue;
+    }
+
     PartitionId part_id = task->partition_id;
 
     NodeSelectionInfo& node_info = part_id_node_info_map[part_id];
@@ -2283,6 +2314,12 @@ void MinLoadFirst::NodeSelect(
       // Move task out of pending_task_map and insert it to the
       // scheduling_result_list.
       moved_task.swap(pending_task_it->second);
+
+      // TODO: 修改主任务array_task_cnt
+      auto array_task = pending_task_map->find(moved_task->ArrayJobId());
+      if (array_task != pending_task_map->end() &&
+          array_task->second->task_array_info.array_task_cnt > 0)
+        array_task->second->task_array_info.array_task_cnt--;
 
       selection_result_list->emplace_back(std::move(moved_task),
                                           std::move(craned_ids));

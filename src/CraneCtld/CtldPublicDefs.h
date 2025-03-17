@@ -18,7 +18,11 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "CtldPreCompiledHeader.h"
+#include "crane/Logger.h"
+#include "crane/PublicHeader.h"
 // Precompiled header come first!
 
 namespace Ctld {
@@ -279,6 +283,19 @@ struct BatchMetaInTask {
   std::string error_file_pattern;
 };
 
+struct TaskArrayInfo {
+  uint32_t array_task_cnt;    // Number of remaining tasks to be processed
+  uint32_t array_comp_tasks;  // Number of failed/canceled/completed subtasks
+  uint32_t max_run_tasks;     // Maximum number of concurrent tasks
+  uint32_t tot_run_tasks;     // Total number of running tasks
+  std::vector<uint32_t> array_task_list;
+  std::string array_inx;        // Original index expression (e.g., 1-100%5)
+  std::unordered_map<uint32_t,  // array_task_id
+                     uint32_t>  // task_id;
+      array_task_map;
+  uint32_t max_array_task_id;
+};
+
 struct TaskInCtld {
   /* -------- [1] Fields that are set at the submission time. ------- */
   absl::Duration time_limit;
@@ -314,6 +331,8 @@ struct TaskInCtld {
 
   std::variant<InteractiveMetaInTask, BatchMetaInTask> meta;
 
+  TaskArrayInfo task_array_info;
+
  private:
   /* ------------- [2] -------------
    * Fields that won't change after this task is accepted.
@@ -321,6 +340,10 @@ struct TaskInCtld {
    * ------------------------------- */
   task_id_t task_id{0};
   task_db_id_t task_db_id{0};
+
+  task_id_t array_job_id{0};  // Main job ID
+  uint32_t array_task_id{0};  // Task index
+
   std::string username;
 
   /* ----------- [3] ----------------
@@ -399,6 +422,13 @@ struct TaskInCtld {
     runtime_attr.set_task_db_id(id);
   }
   task_id_t TaskDbId() const { return task_db_id; }
+
+  void SetArrayJobId(task_id_t id) { array_job_id = id; }
+
+  task_id_t ArrayJobId() const { return array_job_id; }
+
+  void SetArrayTaskId(uint32_t id) { array_task_id = id; }
+  uint32_t ArrayTaskId() const { return array_task_id; }
 
   void SetUsername(std::string const& val) {
     username = val;
@@ -532,6 +562,19 @@ struct TaskInCtld {
     get_user_env = val.get_user_env();
 
     extra_attr = val.extra_attr();
+
+    if (!val.task_array_info().array_inx().empty()) {
+      task_array_info.array_inx = val.task_array_info().array_inx();
+      task_array_info.array_task_cnt = val.task_array_info().array_task_cnt();
+      task_array_info.array_comp_tasks =
+          val.task_array_info().array_comp_tasks();
+      task_array_info.max_run_tasks = val.task_array_info().max_run_tasks();
+
+      for (const auto& _array_task_id :
+           val.task_array_info().array_task_list()) {
+        task_array_info.array_task_list.emplace_back(_array_task_id);
+      }
+    }
   }
 
   void SetFieldsByRuntimeAttr(crane::grpc::RuntimeAttrOfTask const& val) {
@@ -620,6 +663,11 @@ struct TaskInCtld {
       task_info->set_pending_reason(pending_reason);
     } else {
       task_info->set_craned_list(allocated_craneds_regex);
+    }
+
+    if (!task_array_info.array_inx.empty()) {
+      task_info->mutable_task_array_info()->set_array_job_id(array_job_id);
+      task_info->mutable_task_array_info()->set_array_task_id(array_task_id);
     }
   }
 };

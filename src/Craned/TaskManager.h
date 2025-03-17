@@ -272,6 +272,11 @@ class TaskManager {
                                            const std::string& cwd,
                                            task_id_t task_id);
 
+  static std::string ParseFilePathPattern_(const std::string& path_pattern,
+                                           const std::string& cwd,
+                                           task_id_t array_job_id,
+                                           uint32_t array_task_id);
+
   void LaunchTaskInstanceMt_(TaskInstance* instance);
 
   CraneErrCode SpawnProcessInInstance_(TaskInstance* instance,

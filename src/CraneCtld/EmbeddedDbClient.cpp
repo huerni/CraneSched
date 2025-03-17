@@ -18,6 +18,8 @@
 
 #include "EmbeddedDbClient.h"
 
+#include <cstdint>
+
 namespace Ctld {
 
 #ifdef CRANE_HAVE_UNQLITE
@@ -66,9 +68,9 @@ std::expected<void, DbErrorCode> UnqliteDb::Close() {
 }
 
 std::expected<void, DbErrorCode> UnqliteDb::Store(txn_id_t txn_id,
-                                                   const std::string& key,
-                                                   const void* data,
-                                                   size_t len) {
+                                                  const std::string& key,
+                                                  const void* data,
+                                                  size_t len) {
   int rc;
   while (true) {
     rc = unqlite_kv_store(m_db_, key.c_str(), key.size(), data, len);
@@ -86,8 +88,8 @@ std::expected<void, DbErrorCode> UnqliteDb::Store(txn_id_t txn_id,
 }
 
 std::expected<size_t, DbErrorCode> UnqliteDb::Fetch(txn_id_t txn_id,
-                                                     const std::string& key,
-                                                     void* buf, size_t* len) {
+                                                    const std::string& key,
+                                                    void* buf, size_t* len) {
   int rc;
 
   void* buf_arg = (*len == 0) ? nullptr : buf;
@@ -121,7 +123,7 @@ std::expected<size_t, DbErrorCode> UnqliteDb::Fetch(txn_id_t txn_id,
 }
 
 std::expected<void, DbErrorCode> UnqliteDb::Delete(txn_id_t txn_id,
-                                                    const std::string& key) {
+                                                   const std::string& key) {
   int rc;
   while (true) {
     rc = unqlite_kv_delete(m_db_, key.c_str(), key.size());
@@ -313,9 +315,9 @@ std::expected<void, DbErrorCode> BerkeleyDb::Close() {
 }
 
 std::expected<void, DbErrorCode> BerkeleyDb::Store(txn_id_t txn_id,
-                                                    const std::string& key,
-                                                    const void* data,
-                                                    size_t len) {
+                                                   const std::string& key,
+                                                   const void* data,
+                                                   size_t len) {
   DbTxn* txn = GetDbTxnFromId_(txn_id);
 
   Dbt key_dbt((void*)key.c_str(), key.length() + 1);
@@ -333,8 +335,8 @@ std::expected<void, DbErrorCode> BerkeleyDb::Store(txn_id_t txn_id,
 }
 
 std::expected<size_t, DbErrorCode> BerkeleyDb::Fetch(txn_id_t txn_id,
-                                                      const std::string& key,
-                                                      void* buf, size_t* len) {
+                                                     const std::string& key,
+                                                     void* buf, size_t* len) {
   int rc;
   DbTxn* txn = GetDbTxnFromId_(txn_id);
   Dbt key_dbt, data_dbt;
@@ -373,7 +375,7 @@ std::expected<size_t, DbErrorCode> BerkeleyDb::Fetch(txn_id_t txn_id,
 }
 
 std::expected<void, DbErrorCode> BerkeleyDb::Delete(txn_id_t txn_id,
-                                                     const std::string& key) {
+                                                    const std::string& key) {
   DbTxn* txn = GetDbTxnFromId_(txn_id);
 
   Dbt key_dbt((void*)key.c_str(), key.length() + 1);
@@ -624,10 +626,19 @@ bool EmbeddedDbClient::AppendTasksToPendingAndAdvanceTaskIds(
 
   if (!BeginDbTransaction_(m_fixed_db_.get(), &txn_id)) return false;
 
+  task_id_t array_job_id = 0;
+  uint32_t max_array_task_id = 0;
   for (const auto& task : tasks) {
     task->SetTaskId(task_id++);
     task->SetTaskDbId(task_db_id++);
-
+    if (!task->task_array_info.array_inx.empty()) {
+      if (task->ArrayTaskId() == task->task_array_info.max_array_task_id) {
+        array_job_id = task->TaskId();
+        max_array_task_id = task->task_array_info.max_array_task_id;
+      }
+      if (task->ArrayTaskId() <= max_array_task_id)
+        task->SetArrayJobId(array_job_id);
+    }
     result = StoreTypeIntoDb_(m_fixed_db_.get(), txn_id,
                               GetFixedDbEntryName_(task->TaskDbId()),
                               &task->TaskToCtld());

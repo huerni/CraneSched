@@ -146,6 +146,8 @@ message TaskToCtld {
 
   string excludes = 34;
   string nodelist = 35;
+
+  TaskArrayInfo task_array_info = 36;
 }
 
 message TaskInEmbeddedDb {
@@ -213,6 +215,8 @@ message TaskToD {
   double cpus_per_task = 23;
 
   bool get_user_env = 24;
+
+  TaskArrayInfo task_array_info = 25;
 }
 
 message BatchTaskAdditionalMeta {
@@ -239,6 +243,16 @@ message InteractiveTaskAdditionalMeta {
 
   bool x11 = 6;
   X11Meta x11_meta = 7;
+}
+
+message TaskArrayInfo {
+  uint32 array_job_id = 1;
+  uint32 array_task_id = 2;
+  uint32 array_task_cnt = 3;
+  uint32 array_comp_tasks = 4;
+  uint32 max_run_tasks = 5;
+  repeated uint32 array_task_list = 6;
+  string array_inx = 7;
 }
 
 message TaskInfo {
@@ -285,6 +299,8 @@ message TaskInfo {
   // To avoid this, the elapsed time of a task is calculated on the CraneCtld side.
   google.protobuf.Duration elapsed_time = 37;
   repeated string execution_node = 38;
+
+  TaskArrayInfo task_array_info = 39;
 }
 
 message PartitionInfo {

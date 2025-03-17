@@ -350,6 +350,12 @@ bool MongodbClient::FetchJobRecords(
       task->set_extra_attr(view["extra_attr"].get_string().value.data());
 
       task->set_priority(view["priority"].get_int64().value);
+
+      task->mutable_task_array_info()->set_array_job_id(
+          view["array_job_id"].get_int32().value);
+
+      task->mutable_task_array_info()->set_array_task_id(
+          view["array_task_id"].get_int32().value);
     }
   } catch (const bsoncxx::exception& e) {
     PrintError_(e.what());

@@ -86,6 +86,15 @@ EnvMap TaskInstance::GetTaskEnvMap() const {
 
   env_map.emplace("CRANE_JOB_ID", std::to_string(this->task.task_id()));
 
+  if (!task.task_array_info().array_inx().empty()) {
+    env_map.emplace(
+        "CRANE_ARRAY_TASK_ID",
+        std::to_string(this->task.task_array_info().array_task_id()));
+    env_map.emplace(
+        "CRANE_ARRAY_JOB_ID",
+        std::to_string(this->task.task_array_info().array_job_id()));
+  }
+
   if (this->IsCrun()) {
     auto const& ia_meta = this->task.interactive_meta();
     if (!ia_meta.term_env().empty())
@@ -1071,10 +1080,14 @@ void TaskManager::EvCleanGrpcExecuteTaskQueueCb_() {
   }
 }
 
+// TODO: update array task log
 void TaskManager::LaunchTaskInstanceMt_(TaskInstance* instance) {
   // This function runs in a multi-threading manner.
   // Take care of thread safety.
   task_id_t task_id = instance->task.task_id();
+  task_id_t array_job_id = instance->task.task_array_info().array_job_id();
+  uint32_t array_task_id = instance->task.task_array_info().array_task_id();
+  bool is_array_task = (!instance->task.task_array_info().array_inx().empty());
 
   if (!g_cg_mgr->CheckIfCgroupForTasksExists(task_id)) {
     CRANE_ERROR("Failed to find created cgroup for task #{}", task_id);
@@ -1113,8 +1126,15 @@ void TaskManager::LaunchTaskInstanceMt_(TaskInstance* instance) {
   // Calloc tasks have no scripts to run. Just return.
   if (instance->IsCalloc()) return;
 
-  instance->meta->parsed_sh_script_path =
-      fmt::format("{}/Crane-{}.sh", g_config.CranedScriptDir, task_id);
+  if (is_array_task) {
+    instance->meta->parsed_sh_script_path =
+        fmt::format("{}/Crane-{}_{}.sh", g_config.CranedScriptDir, array_job_id,
+                    array_task_id);
+  } else {
+    instance->meta->parsed_sh_script_path =
+        fmt::format("{}/Crane-{}.sh", g_config.CranedScriptDir, task_id);
+  }
+
   auto& sh_path = instance->meta->parsed_sh_script_path;
 
   FILE* fptr = fopen(sh_path.c_str(), "w");
@@ -1141,29 +1161,60 @@ void TaskManager::LaunchTaskInstanceMt_(TaskInstance* instance) {
 
   // Prepare file output name for batch tasks.
   if (instance->task.type() == crane::grpc::Batch) {
-    /* Perform file name substitutions
-     * %j - Job ID
-     * %u - Username
-     * %x - Job name
-     */
-    process->batch_meta.parsed_output_file_pattern =
-        ParseFilePathPattern_(instance->task.batch_meta().output_file_pattern(),
-                              instance->task.cwd(), task_id);
-    absl::StrReplaceAll({{"%j", std::to_string(task_id)},
-                         {"%u", instance->pwd_entry.Username()},
-                         {"%x", instance->task.name()}},
-                        &process->batch_meta.parsed_output_file_pattern);
+    if (is_array_task) {
+      /*
+       * Perform file name substitutions
+       * %j - Array Job ID
+       * %a - Array Task ID
+       * %u - Username
+       * %x - Job name
+       */
+      process->batch_meta.parsed_output_file_pattern = ParseFilePathPattern_(
+          instance->task.batch_meta().output_file_pattern(),
+          instance->task.cwd(), array_job_id, array_task_id);
+      absl::StrReplaceAll({{"%j", std::to_string(array_job_id)},
+                           {"%a", std::to_string(array_task_id)},
+                           {"%u", instance->pwd_entry.Username()},
+                           {"%x", instance->task.name()}},
+                          &process->batch_meta.parsed_output_file_pattern);
 
-    // If -e / --error is not defined, leave
-    // batch_meta.parsed_error_file_pattern empty;
-    if (!instance->task.batch_meta().error_file_pattern().empty()) {
-      process->batch_meta.parsed_error_file_pattern = ParseFilePathPattern_(
-          instance->task.batch_meta().error_file_pattern(),
+      // If -e / --error is not defined, leave
+      // batch_meta.parsed_error_file_pattern empty;
+      if (!instance->task.batch_meta().error_file_pattern().empty()) {
+        process->batch_meta.parsed_error_file_pattern = ParseFilePathPattern_(
+            instance->task.batch_meta().error_file_pattern(),
+            instance->task.cwd(), array_job_id, array_task_id);
+        absl::StrReplaceAll({{"%j", std::to_string(array_job_id)},
+                             {"%a", std::to_string(array_task_id)},
+                             {"%u", instance->pwd_entry.Username()},
+                             {"%x", instance->task.name()}},
+                            &process->batch_meta.parsed_error_file_pattern);
+      }
+    } else {
+      /* Perform file name substitutions
+       * %j - Job ID
+       * %u - Username
+       * %x - Job name
+       */
+      process->batch_meta.parsed_output_file_pattern = ParseFilePathPattern_(
+          instance->task.batch_meta().output_file_pattern(),
           instance->task.cwd(), task_id);
       absl::StrReplaceAll({{"%j", std::to_string(task_id)},
                            {"%u", instance->pwd_entry.Username()},
                            {"%x", instance->task.name()}},
-                          &process->batch_meta.parsed_error_file_pattern);
+                          &process->batch_meta.parsed_output_file_pattern);
+
+      // If -e / --error is not defined, leave
+      // batch_meta.parsed_error_file_pattern empty;
+      if (!instance->task.batch_meta().error_file_pattern().empty()) {
+        process->batch_meta.parsed_error_file_pattern = ParseFilePathPattern_(
+            instance->task.batch_meta().error_file_pattern(),
+            instance->task.cwd(), task_id);
+        absl::StrReplaceAll({{"%j", std::to_string(task_id)},
+                             {"%u", instance->pwd_entry.Username()},
+                             {"%x", instance->task.name()}},
+                            &process->batch_meta.parsed_error_file_pattern);
+      }
     }
   }
 
@@ -1219,6 +1270,33 @@ std::string TaskManager::ParseFilePathPattern_(const std::string& path_pattern,
   // `Crane-<Job ID>.out` to the path.
   if (absl::EndsWith(resolved_path_pattern, "/"))
     resolved_path_pattern += fmt::format("Crane-{}.out", task_id);
+
+  return resolved_path_pattern;
+}
+
+std::string TaskManager::ParseFilePathPattern_(const std::string& path_pattern,
+                                               const std::string& cwd,
+                                               task_id_t array_job_id,
+                                               uint32_t array_task_id) {
+  std::string resolved_path_pattern;
+
+  if (path_pattern.empty()) {
+    // If file path is not specified, first set it to cwd.
+    resolved_path_pattern = fmt::format("{}/", cwd);
+  } else {
+    if (path_pattern[0] == '/')
+      // If output file path is an absolute path, do nothing.
+      resolved_path_pattern = path_pattern;
+    else
+      // If output file path is a relative path, prepend cwd to the path.
+      resolved_path_pattern = fmt::format("{}/{}", cwd, path_pattern);
+  }
+
+  // Path ends with a directory, append default stdout file name
+  // `Crane-<Job ID>.out` to the path.
+  if (absl::EndsWith(resolved_path_pattern, "/"))
+    resolved_path_pattern +=
+        fmt::format("Crane-{}_{}.out", array_job_id, array_task_id);
 
   return resolved_path_pattern;
 }

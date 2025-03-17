@@ -318,6 +318,13 @@ crane::grpc::ExecuteTasksRequest CranedStub::NewExecuteTasksRequests(
       auto *mutable_meta = mutable_task->mutable_interactive_meta();
       mutable_meta->CopyFrom(proto_ia_meta);
     }
+
+    if (!task->task_array_info.array_inx.empty()) {
+      auto *mutable_array_info = mutable_task->mutable_task_array_info();
+      mutable_array_info->set_array_job_id(task->ArrayJobId());
+      mutable_array_info->set_array_task_id(task->ArrayTaskId());
+      mutable_array_info->set_array_inx(task->task_array_info.array_inx);
+    }
   }
 
   return request;

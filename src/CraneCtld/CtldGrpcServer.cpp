@@ -1285,7 +1285,7 @@ CraneExpected<std::future<task_id_t>> CtldServer::SubmitTaskToScheduler(
         "account '{}'",
         task->Username(), task->partition_id, task->account);
     return std::unexpected(CraneErrCode::ERR_PARTITION_MISSING);
-  }
+          }
 
   auto enable_res = g_account_manager->CheckIfUserOfAccountIsEnabled(
       task->Username(), task->account);
@@ -1293,23 +1293,48 @@ CraneExpected<std::future<task_id_t>> CtldServer::SubmitTaskToScheduler(
     return std::unexpected(enable_res.error());
   }
 
-  auto result = g_meta_container->CheckIfAccountIsAllowedInPartition(
-      task->partition_id, task->account);
-  if (!result) return std::unexpected(result.error());
+  if (!task->task_array_info.array_inx.empty()) {
+    uint32_t task_cnt = task->task_array_info.array_task_cnt;
+    for (uint32_t i = 0; i < task_cnt; i++) {
+      auto result = g_task_scheduler->AcquireTaskAttributes(task.get());
+      if (!result) {
+        task->task_array_info.array_task_cnt = i;
+        break;
+      }
+    }
 
-  result = g_task_scheduler->AcquireTaskAttributes(task.get());
+    CraneExpected<void> result;
+    if (task->task_array_info.array_task_cnt > 0)
+      result = g_task_scheduler->CheckTaskValidity(task.get());
 
-  if (result) result = g_task_scheduler->CheckTaskValidity(task.get());
+    if (task->task_array_info.array_task_cnt > 0 && result) {
+      task->SetSubmitTime(absl::Now());
+      task->task_array_info.max_array_task_id =
+          task->task_array_info
+              .array_task_list[task->task_array_info.array_task_cnt - 1];
+      std::future<task_id_t> future =
+          g_task_scheduler->SubmitTaskAsync(std::move(task));
+      return {std::move(future)};
+    }
 
-  task->SetSubmitTime(absl::Now());
+    return std::unexpected(result.error());
+  } else {
+    auto result  = g_task_scheduler->AcquireTaskAttributes(task.get());
 
-  if (result) {
-    std::future<task_id_t> future =
-        g_task_scheduler->SubmitTaskAsync(std::move(task));
-    return {std::move(future)};
+    result = g_task_scheduler->AcquireTaskAttributes(task.get());
+
+    if (result) result = g_task_scheduler->CheckTaskValidity(task.get());
+
+    task->SetSubmitTime(absl::Now());
+
+    if (!result) {
+      std::future<task_id_t> future =
+          g_task_scheduler->SubmitTaskAsync(std::move(task));
+      return {std::move(future)};
+    }
+
+    return std::unexpected(result.error());
   }
-
-  return std::unexpected(result.error());
 }
 
 }  // namespace Ctld
