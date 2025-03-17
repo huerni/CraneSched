@@ -1842,12 +1842,25 @@ void TaskScheduler::QueryTasksInRam(
   };
 
   bool no_task_ids_constraint = request->filter_task_ids().empty();
-  std::unordered_set<uint32_t> req_task_ids(request->filter_task_ids().begin(),
-                                            request->filter_task_ids().end());
+  std::unordered_map<uint32_t, std::unordered_set<uint32_t>> req_task_ids;
+  for (size_t i = 0; i<request->filter_array_task_ids_size(); ++i) {
+    uint32_t filter_task_id = request->filter_task_ids(i);
+    uint32_t filter_array_task_id = request->filter_array_task_ids(i);
+    if (!req_task_ids.contains(filter_task_id)) {
+      req_task_ids.insert({filter_task_id, std::unordered_set<uint32_t>{filter_array_task_id}});
+      continue;
+    }
+    req_task_ids[filter_task_id].insert(filter_array_task_id);
+  }
   auto task_rng_filter_id = [&](auto& it) {
     TaskInCtld& task = *it.second;
-    return no_task_ids_constraint || req_task_ids.contains(task.TaskId()) ||
-           req_task_ids.contains(task.ArrayJobId());
+    if (no_task_ids_constraint) return true;
+
+    // For non-array jobs or main jobs, the ArrayJobId is set to the JobId.
+    auto iter = req_task_ids.find(task.ArrayJobId());
+    if (iter == req_task_ids.end()) return false;
+
+    return iter->second.contains(task.ArrayTaskId()) || iter->second.contains(NoVal);
   };
 
   bool no_task_states_constraint = request->filter_task_states().empty();

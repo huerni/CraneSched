@@ -76,6 +76,8 @@ constexpr int64_t kTaskMaxTimeLimitSec =
 constexpr int64_t kTaskMaxTimeStampSec =
     google::protobuf::util::TimeUtil::kTimestampMaxSeconds;
 
+constexpr uint32_t NoVal = UINT32_MAX;
+
 namespace ExitCode {
 
 inline constexpr size_t kExitStatusNum = 256;
