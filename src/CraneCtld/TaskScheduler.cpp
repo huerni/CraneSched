@@ -1558,6 +1558,16 @@ void TaskScheduler::CleanSubmitQueueCb_() {
     if (accepted_actual_size == 0) break;
 
     // TODO: 拆分数组任务，保证子任务提交成功时，主任务一定提交成功
+    if (g_config.RejectTasksBeyondCapacity) {
+      // TODO: array task 这种情况怎么处理？
+    } else {
+      for (uint32_t i = 0; i < accepted_tasks.size(); ++i) {
+        uint32_t pos = accepted_tasks.size() - 1 - i;
+        auto* task = accepted_tasks[pos].first.get();
+        if (!task->task_array_info.array_inx.empty())
+          accepted_actual_size += task->task_array_info.array_task_cnt - 1;
+      }
+    }
 
     accepted_task_ptrs.reserve(accepted_actual_size);
 
@@ -1565,9 +1575,35 @@ void TaskScheduler::CleanSubmitQueueCb_() {
     for (uint32_t i = 0; i < accepted_tasks.size(); i++) {
       uint32_t pos = accepted_tasks.size() - 1 - i;
       auto* task = accepted_tasks[pos].first.get();
-      // Add the task to the pending task queue.
-      task->SetStatus(crane::grpc::Pending);
-      accepted_task_ptrs.emplace_back(task);
+
+      if (!task->task_array_info.array_inx.empty()) {
+        if (task->task_array_info.array_task_cnt == 0) {
+          accepted_tasks[pos].second.set_value(0);
+          continue;
+        }
+        task->SetArrayTaskId(task->task_array_info.max_array_task_id);
+        // Add the task to the pending task queue.
+        task->SetStatus(crane::grpc::Pending);
+        accepted_task_ptrs.emplace_back(task);
+        for (uint32_t j = 0; j < task->task_array_info.array_task_cnt-1; j--) {
+          uint32_t array_task_id = task->task_array_info.array_task_list[j];
+          // set filed
+          // TODO: 完全复制信息
+          auto task_copy = std::make_unique<TaskInCtld>();
+          task_copy->SetFieldsByTaskToCtld(task->TaskToCtld());
+          task_copy->SetArrayTaskId(array_task_id);
+          task_copy->SetSubmitTime(task->SubmitTime());
+          task_copy->SetUsername(task->Username());
+          task_copy->account = task->account;
+
+          task->SetStatus(crane::grpc::Pending);
+          accepted_task_ptrs.emplace_back(task_copy.get());
+        }
+      } else {
+        // Add the task to the pending task queue.
+        task->SetStatus(crane::grpc::Pending);
+        accepted_task_ptrs.emplace_back(task);
+      }
     }
 
     if (!g_embedded_db_client->AppendTasksToPendingAndAdvanceTaskIds(
@@ -1577,14 +1613,23 @@ void TaskScheduler::CleanSubmitQueueCb_() {
       break;
     }
 
-    m_pending_task_map_mtx_.Lock();
     for (uint32_t i = 0; i < accepted_tasks.size(); i++) {
       uint32_t pos = accepted_tasks.size() - 1 - i;
       task_id_t id = accepted_tasks[pos].first->TaskId();
       auto& task_id_promise = accepted_tasks[pos].second;
-
-      m_pending_task_map_.emplace(id, std::move(accepted_tasks[pos].first));
       task_id_promise.set_value(id);
+    }
+
+    m_pending_task_map_mtx_.Lock();
+    for (size_t i = 0; i<accepted_task_ptrs.size(); i++) {
+      auto task = accepted_task_ptrs[i];
+      task_id_t id = task->TaskId();
+      if (!task->task_array_info.array_inx.empty()) {
+        if (task->task_array_info.array_task_cnt == 0) {
+          continue;
+        }
+      }
+      m_pending_task_map_.emplace(id, std::move(task));
     }
 
     m_pending_map_cached_size_.store(m_pending_task_map_.size(),
