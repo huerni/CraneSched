@@ -450,6 +450,8 @@ message InteractiveTaskAdditionalMeta {
 
   // Crun input will forward to these tasks
   optional uint32 input_task_id = 8;
+
+  string mpi = 9;
 }
 
 message PodTaskAdditionalMeta {
@@ -1014,4 +1016,8 @@ message LicenseResource {
     None = 0;
     Absolute = 1;
   }
+}
+message PmixProc {
+  string nspace = 1;
+  uint32 rank = 2;
 }
