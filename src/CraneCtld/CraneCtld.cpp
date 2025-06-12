@@ -139,17 +139,17 @@ void ParseConfig(int argc, char** argv) {
         if (config["DomainSuffix"])
           g_config.ListenConf.DomainSuffix = config["DomainSuffix"].as<std::string>();
 
-        if (config["Nodes"]) {
-          std::string nodes = config["Nodes"].as<std::string>();
-          std::list<std::string> name_list;
-          if (!util::ParseHostList(absl::StripAsciiWhitespace(nodes).data(),
-                                   &name_list)) {
-            CRANE_ERROR("Illegal login node name string format.");
-            std::exit(1);
-                                   }
-          g_config.ListenConf.AllowedNodes = std::unordered_set<std::string>(
-               std::make_move_iterator(name_list.begin()),  std::make_move_iterator(name_list.end()));
-        }
+        // if (config["Nodes"]) {
+        //   std::string nodes = config["Nodes"].as<std::string>();
+        //   std::list<std::string> name_list;
+        //   if (!util::ParseHostList(absl::StripAsciiWhitespace(nodes).data(),
+        //                            &name_list)) {
+        //     CRANE_ERROR("Illegal login node name string format.");
+        //     std::exit(1);
+        //                            }
+        //   g_config.ListenConf.AllowedNodes = std::unordered_set<std::string>(
+        //        std::make_move_iterator(name_list.begin()),  std::make_move_iterator(name_list.end()));
+        // }
 
         if (config["InternalCertFilePath"]) {
           internal_certs.CertFilePath = config["InternalCertFilePath"].as<std::string>();
@@ -749,6 +749,9 @@ void ParseConfig(int argc, char** argv) {
           g_config.VaultConf.Tls = vault_config["Tls"].as<bool>();
         else
           g_config.VaultConf.Tls = false;
+      } else if (g_config.ListenConf.UseTls) {
+        CRANE_ERROR("Vault is not configured.");
+        std::exit(1);
       }  // vault
 
     } catch (YAML::BadFile& e) {
@@ -834,6 +837,9 @@ void InitializeCtldGlobalVariables() {
   if (g_config.VaultConf.Enabled) {
     g_vault_client = std::make_unique<Security::VaultClient>();
     if (!g_vault_client->InitFromConfig(g_config.VaultConf)) std::exit(1);
+  } else if (g_config.ListenConf.UseTls) {
+    CRANE_ERROR("Vault is not Enabled.");
+    std::exit(1);
   }
 
   // Account manager must be initialized before Task Scheduler

@@ -20,6 +20,23 @@
 
 #include "crane/Network.h"
 
+grpc::Status ExternalAuthMetadataProcessor::Process(const InputMetadata& auth_metadata,
+                       grpc::AuthContext* context,
+                       OutputMetadata* consumed_auth_metadata,
+                       OutputMetadata* response_metadata) {
+
+  // TODO: 过滤方法
+  auto method = auth_metadata.find(":path")->second.data();
+
+  auto cert = context->FindPropertyValues("x509_pem_cert");
+  if (cert.empty())  return grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "Missing Certificates");
+
+  // TODO: Check cert validity
+
+  return grpc::Status::OK;
+}
+
+
 std::string_view GrpcConnStateStr(grpc_connectivity_state state) {
   switch (state) {
   case GRPC_CHANNEL_IDLE:
@@ -103,17 +120,18 @@ void ServerBuilderAddTcpTlsListeningPort(grpc::ServerBuilder* builder,
   pem_key_cert_pair.private_key = certs.KeyContent;
 
   grpc::SslServerCredentialsOptions ssl_opts;
-  // pem_root_certs is actually the certificate of server side rather than
-  // CA certificate. CA certificate is not needed.
-  // Since we use the same cert/key pair for both cranectld/craned,
-  // pem_root_certs is set to the same certificate.
-  ssl_opts.pem_root_certs = certs.CertContent;
+  ssl_opts.pem_root_certs = certs.CaContent;
   ssl_opts.pem_key_cert_pairs.emplace_back(std::move(pem_key_cert_pair));
   ssl_opts.client_certificate_request =
       GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY;
 
+  // TODO:: internal 不需要external_auth_processor，区分
+  std::shared_ptr<ExternalAuthMetadataProcessor> external_auth_processor =
+        std::shared_ptr<ExternalAuthMetadataProcessor>(new ExternalAuthMetadataProcessor());
+  std::shared_ptr<grpc::ServerCredentials> creds = grpc::SslServerCredentials(ssl_opts);
+  creds->SetAuthMetadataProcessor(external_auth_processor);
   builder->AddListeningPort(listen_addr_port,
-                            grpc::SslServerCredentials(ssl_opts));
+                            creds);
 }
 
 void SetGrpcClientKeepAliveChannelArgs(grpc::ChannelArguments* args) {

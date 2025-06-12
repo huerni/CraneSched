@@ -31,6 +31,14 @@ struct TlsCertificates {
   std::string CaContent;
 };
 
+class ExternalAuthMetadataProcessor : public grpc::AuthMetadataProcessor {
+ public:
+  grpc::Status Process(const InputMetadata& auth_metadata,
+                       grpc::AuthContext* context,
+                       OutputMetadata* consumed_auth_metadata,
+                       OutputMetadata* response_metadata) override;
+};
+
 std::string_view GrpcConnStateStr(grpc_connectivity_state state);
 
 template <typename T>
@@ -73,7 +81,7 @@ void SetGrpcClientKeepAliveChannelArgs(grpc::ChannelArguments* args);
 
 void SetTlsHostnameOverride(grpc::ChannelArguments* args,
                             const std::string& hostname,
-                             const std::string& domain_suffix);
+                            const std::string& domain_suffix);
 
 std::shared_ptr<grpc::Channel> CreateUnixInsecureChannel(
     const std::string& socket_addr);
@@ -95,4 +103,5 @@ std::shared_ptr<grpc::Channel> CreateTcpTlsChannelByHostname(
 
 std::shared_ptr<grpc::Channel> CreateTcpTlsCustomChannelByHostname(
     const std::string& hostname, const std::string& port,
-    const TlsCertificates& certs, const std::string& domain_suffix, const grpc::ChannelArguments& args);
+    const TlsCertificates& certs, const std::string& domain_suffix,
+    const grpc::ChannelArguments& args);
