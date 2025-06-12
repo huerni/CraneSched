@@ -22,6 +22,8 @@
 #include "AccountMetaContainer.h"
 #include "CranedKeeper.h"
 #include "CranedMetaContainer.h"
+#include "CtldForInternalServer.h"
+#include "CtldForSignServer.h"
 #include "CtldPublicDefs.h"
 #include "TaskScheduler.h"
 #include "crane/PluginClient.h"
@@ -1344,6 +1346,10 @@ CtldServer::CtldServer(const Config::CraneCtldListenConf &listen_conf) {
     // main thread will access g_craned_keeper simultaneously and a race
     // condition will occur.
     g_craned_keeper->Shutdown();
+
+    g_ctld_for_internal_server->Shutdown();
+
+    g_ctld_for_sign_server->Shutdown();
 
     p_server->Shutdown(std::chrono::system_clock::now() +
                        std::chrono::seconds(1));

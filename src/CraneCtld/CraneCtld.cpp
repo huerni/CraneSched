@@ -34,6 +34,7 @@
 #include "EmbeddedDbClient.h"
 #include "RpcService/CranedKeeper.h"
 #include "RpcService/CtldForInternalServer.h"
+#include "RpcService/CtldForSignServer.h"
 #include "RpcService/CtldGrpcServer.h"
 #include "Security/VaultClient.h"
 #include "TaskScheduler.h"
@@ -884,7 +885,10 @@ void InitializeCtldGlobalVariables() {
   g_task_scheduler = std::make_unique<TaskScheduler>();
 
   g_ctld_server = std::make_unique<Ctld::CtldServer>(g_config.ListenConf);
-
+  g_ctld_for_internal_server =
+        std::make_unique<Ctld::CtldForInternalServer>(g_config.ListenConf);
+  g_ctld_for_sign_server =
+        std::make_unique<Ctld::CtldForSignServer>(g_config.ListenConf);
   ok = g_task_scheduler->Init();
   if (!ok) {
     CRANE_ERROR("The initialization of TaskScheduler failed. Exiting...");
@@ -893,9 +897,6 @@ void InitializeCtldGlobalVariables() {
   }
 
   g_runtime_status.srv_ready.store(true, std::memory_order_release);
-  g_ctld_server = std::make_unique<Ctld::CtldServer>(g_config.ListenConf);
-  g_ctld_for_internal_server =
-      std::make_unique<Ctld::CtldForInternalServer>(g_config.ListenConf);
 }
 
 void CreateFolders() {

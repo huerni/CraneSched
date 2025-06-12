@@ -848,6 +848,19 @@ message EnableAutoPowerControlReply {
   repeated string not_modified_reasons = 3;
 }
 
+message SignUserCertificateRequest {
+  uint32 uid = 1;
+  string csr_content = 2;
+  string alt_names = 3;   // "localhost, *.domainSuffix"
+}
+
+message SignUserCertificateResponse {
+  bool ok = 1;
+  string certificate = 2;
+  string ca_certificate = 3;
+  ErrCode reason = 4;
+}
+
 // Todo: Divide service into two parts: one for Craned and one for Crun
 //  We need to distinguish the message sender
 //  and have some kind of authentication
@@ -907,6 +920,11 @@ service CraneCtldForInternal {
 
   /* RPCs called from Cfored */
   rpc CforedStream(stream StreamCforedRequest) returns (stream StreamCtldReply);
+}
+
+service CraneCtldForSign {
+  /* RPCS called from PKI request */
+  rpc SignUserCertificate(SignUserCertificateRequest) returns (SignUserCertificateResponse);
 }
 
 service Craned {

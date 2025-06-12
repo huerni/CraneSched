@@ -22,6 +22,8 @@ add_executable(cranectld
         RpcService/CtldGrpcServer.cpp
         RpcService/CtldForInternalServer.h
         RpcService/CtldForInternalServer.cpp
+        RpcService/CtldForSignServer.h
+        RpcService/CtldForSignServer.cpp
 
         CraneCtld.cpp
 
