@@ -141,21 +141,21 @@ void ParseConfig(int argc, char** argv) {
         g_config.ListenConf.UseTls = true;
         TlsCertificates& tls_certs = g_config.ListenConf.TlsCerts;
 
-        tls_certs.DomainSuffix = YamlValueOr(config["DomainSuffix"], "");
+        g_config.ListenConf.DomainSuffix = YamlValueOr(config["DomainSuffix"], "");
 
-        if (config["ServerCertFilePath"]) {
-          tls_certs.ServerCertFilePath =
-              config["ServerCertFilePath"].as<std::string>();
+        if (config["InternalCertFilePath"]) {
+          tls_certs.CertFilePath =
+              config["InternalCertFilePath"].as<std::string>();
 
           try {
-            tls_certs.ServerCertContent =
-                util::ReadFileIntoString(tls_certs.ServerCertFilePath);
+            tls_certs.CertContent =
+                util::ReadFileIntoString(tls_certs.CertFilePath);
           } catch (const std::exception& e) {
-            CRANE_ERROR("Read cert file error: {}", e.what());
+            CRANE_ERROR("Read internal cert file error: {}", e.what());
             std::exit(1);
           }
 
-          if (tls_certs.ServerCertContent.empty()) {
+          if (tls_certs.CertContent.empty()) {
             CRANE_ERROR(
                 "UseTls is true, but the file specified by ServerCertFilePath "
                 "is empty");
@@ -165,24 +165,24 @@ void ParseConfig(int argc, char** argv) {
           std::exit(1);
         }
 
-        if (config["ServerKeyFilePath"]) {
-          tls_certs.ServerKeyFilePath =
-              config["ServerKeyFilePath"].as<std::string>();
+        if (config["InternalKeyFilePath"]) {
+          tls_certs.KeyFilePath =
+              config["InternalKeyFilePath"].as<std::string>();
 
           try {
-            tls_certs.ServerKeyContent =
-                util::ReadFileIntoString(tls_certs.ServerKeyFilePath);
+            tls_certs.KeyContent =
+                util::ReadFileIntoString(tls_certs.KeyFilePath);
           } catch (const std::exception& e) {
             CRANE_ERROR("Read cert file error: {}", e.what());
             std::exit(1);
           }
-          if (tls_certs.ServerKeyContent.empty()) {
+          if (tls_certs.KeyContent.empty()) {
             CRANE_ERROR(
-                "UseTls is true, but the file specified by ServerKeyFilePath "
+                "UseTls is true, but the file specified by InternalKeyFilePath "
                 "is empty");
           }
         } else {
-          CRANE_ERROR("UseTls is true, but ServerKeyFilePath is empty");
+          CRANE_ERROR("UseTls is true, but InternalKeyFilePath is empty");
           std::exit(1);
         }
       } else {
