@@ -51,6 +51,7 @@ inline const char* kCranedDefaultPort = "10010";
 inline const char* kCforedDefaultPort = "10012";
 inline const char* kCtldForInternalDefaultPort = "10013";
 inline const char* kCtldForSignDefaultPort = "10014";
+inline const char* kCranedForPamDefaultPort = "10015";
 
 inline const char* const kDefaultConfigPath = "/etc/crane/config.yaml";
 inline const char* const kDefaultDbConfigPath = "/etc/crane/database.yaml";

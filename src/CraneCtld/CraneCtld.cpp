@@ -903,6 +903,9 @@ void InitializeCtldGlobalVariables() {
   }
 
   g_runtime_status.srv_ready.store(true, std::memory_order_release);
+  g_ctld_server = std::make_unique<Ctld::CtldServer>(g_config.ListenConf);
+  g_ctld_for_internal_server =
+      std::make_unique<Ctld::CtldForInternalServer>(g_config.ListenConf);
 }
 
 void CreateFolders() {
