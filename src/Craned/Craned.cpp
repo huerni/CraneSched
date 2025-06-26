@@ -177,7 +177,7 @@ void ParseConfig(int argc, char** argv) {
             tls_certs.KeyContent =
                 util::ReadFileIntoString(tls_certs.KeyFilePath);
           } catch (const std::exception& e) {
-            CRANE_ERROR("Read cert file error: {}", e.what());
+            CRANE_ERROR("Read InternalKeyFilePath file error: {}", e.what());
             std::exit(1);
           }
           if (tls_certs.KeyContent.empty()) {
@@ -189,6 +189,22 @@ void ParseConfig(int argc, char** argv) {
           CRANE_ERROR("UseTls is true, but InternalKeyFilePath is empty");
           std::exit(1);
         }
+
+        if (config["InternalCaFilePath"]) {
+          tls_certs.CaFilePath = config["InternalCaFilePath"].as<std::string>();
+
+          try {
+            tls_certs.CaContent =
+                util::ReadFileIntoString(tls_certs.CaFilePath);
+          } catch (const std::exception& e) {
+            CRANE_ERROR("Read CaFilePath file error: {}", e.what());
+            std::exit(1);
+          }
+        } else {
+          CRANE_ERROR("UseTls is true, but InternalCaFilePath is empty");
+          std::exit(1);
+        }
+
       } else {
         g_config.ListenConf.UseTls = false;
       }

@@ -104,7 +104,7 @@ grpc::Status CranedForPamServiceImpl::QueryTaskIdFromPortForward(
                   request->ssh_remote_address(), remote_hostname);
 
       channel_of_remote_service = CreateTcpTlsChannelByHostname(
-          remote_hostname, crane_port, g_config.ListenConf.TlsCerts);
+          remote_hostname, crane_port, g_config.ListenConf.TlsCerts, g_config.ListenConf.DomainSuffix);
     } else {
       CRANE_ERROR("Failed to resolve remote address {}.",
                   request->ssh_remote_address());
@@ -237,7 +237,7 @@ grpc::Status CranedForPamServiceImpl::QueryTaskEnvVariablesForward(
   if (g_config.ListenConf.UseTls)
     channel_of_remote_service = CreateTcpTlsChannelByHostname(
         execution_node, g_config.ListenConf.CranedListenPort,
-        g_config.ListenConf.TlsCerts);
+        g_config.ListenConf.TlsCerts, g_config.ListenConf.DomainSuffix);
   else
     channel_of_remote_service = CreateTcpInsecureChannel(
         execution_node, g_config.ListenConf.CranedListenPort);
