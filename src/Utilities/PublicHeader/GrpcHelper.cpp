@@ -19,23 +19,54 @@
 #include "crane/GrpcHelper.h"
 
 #include "crane/Network.h"
+#include "crane/String.h"
 
-grpc::Status ExternalAuthMetadataProcessor::Process(const InputMetadata& auth_metadata,
-                       grpc::AuthContext* context,
-                       OutputMetadata* consumed_auth_metadata,
-                       OutputMetadata* response_metadata) {
+grpc::Status ExternalAuthMetadataProcessor::Process(
+    const InputMetadata& auth_metadata, grpc::AuthContext* context,
+    OutputMetadata* consumed_auth_metadata, OutputMetadata* response_metadata) {
 
-  // TODO: 过滤方法
-  auto method = auth_metadata.find(":path")->second.data();
+  std::unordered_set<std::string> plain_methods{
+      "QueryClusterInfo", "QueryPartitionInfo", "QueryCranedInfo"};
 
-  auto cert = context->FindPropertyValues("x509_pem_cert");
-  if (cert.empty())  return grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "Missing Certificates");
+  auto data = auth_metadata.find(":path")->second;
+  std::string method(data.data(), data.size());
 
-  // TODO: Check cert validity
+  auto pos = method.rfind('/');
+  if (pos != std::string::npos) {
+    std::string result = method.substr(pos + 1);
+    if (plain_methods.contains(result))
+      return grpc::Status::OK;
+  } else
+    return grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "method invalid");
+
+  auto cert_data = context->FindPropertyValues("x509_pem_cert");
+  if (cert_data.empty())
+    return grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                        "Missing Certificates");
+
+  std::string cert(cert_data[0].data(), cert_data[0].size());
+  if (cert.empty())
+    return grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                        "Missing Certificates");
+
+  auto result = util::ParseCertificate(cert);
+  if (!result)
+    return grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                        "Invalid Certificates");
+
+  // TODO: 比较uid是否相同
+  auto uid_data = auth_metadata.find("uid")->second;
+  if (uid_data.empty())
+    return grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                        "Missing uid");
+  std::string uid_str(uid_data.data(), uid_data.size());
+
+  if (uid_str.empty() || uid_str != result.value().first)
+    return grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                        "Certificate mismatch");
 
   return grpc::Status::OK;
 }
-
 
 std::string_view GrpcConnStateStr(grpc_connectivity_state state) {
   switch (state) {
@@ -127,11 +158,12 @@ void ServerBuilderAddTcpTlsListeningPort(grpc::ServerBuilder* builder,
 
   // TODO:: internal 不需要external_auth_processor，区分
   std::shared_ptr<ExternalAuthMetadataProcessor> external_auth_processor =
-        std::shared_ptr<ExternalAuthMetadataProcessor>(new ExternalAuthMetadataProcessor());
-  std::shared_ptr<grpc::ServerCredentials> creds = grpc::SslServerCredentials(ssl_opts);
+      std::shared_ptr<ExternalAuthMetadataProcessor>(
+          new ExternalAuthMetadataProcessor());
+  std::shared_ptr<grpc::ServerCredentials> creds =
+      grpc::SslServerCredentials(ssl_opts);
   creds->SetAuthMetadataProcessor(external_auth_processor);
-  builder->AddListeningPort(listen_addr_port,
-                            creds);
+  builder->AddListeningPort(listen_addr_port, creds);
 }
 
 void SetGrpcClientKeepAliveChannelArgs(grpc::ChannelArguments* args) {
@@ -154,8 +186,7 @@ void SetGrpcClientKeepAliveChannelArgs(grpc::ChannelArguments* args) {
 void SetTlsHostnameOverride(grpc::ChannelArguments* args,
                             const std::string& hostname,
                             const std::string& domain_suffix) {
-  args->SetSslTargetNameOverride(
-      fmt::format("{}.{}", hostname, domain_suffix));
+  args->SetSslTargetNameOverride(fmt::format("{}.{}", hostname, domain_suffix));
 }
 
 std::shared_ptr<grpc::Channel> CreateUnixInsecureChannel(
@@ -205,19 +236,18 @@ std::shared_ptr<grpc::Channel> CreateTcpTlsChannelByHostname(
   grpc::SslCredentialsOptions ssl_opts;
   SetSslCredOpts(&ssl_opts, certs);
 
-  std::string target =
-      fmt::format("{}.{}:{}", hostname, domain_suffix, port);
+  std::string target = fmt::format("{}.{}:{}", hostname, domain_suffix, port);
   return grpc::CreateChannel(target, grpc::SslCredentials(ssl_opts));
 }
 
 std::shared_ptr<grpc::Channel> CreateTcpTlsCustomChannelByHostname(
     const std::string& hostname, const std::string& port,
-    const TlsCertificates& certs, const std::string& domain_suffix, const grpc::ChannelArguments& args) {
+    const TlsCertificates& certs, const std::string& domain_suffix,
+    const grpc::ChannelArguments& args) {
   grpc::SslCredentialsOptions ssl_opts;
   SetSslCredOpts(&ssl_opts, certs);
 
-  std::string target =
-      fmt::format("{}.{}:{}", hostname, domain_suffix, port);
+  std::string target = fmt::format("{}.{}:{}", hostname, domain_suffix, port);
   return grpc::CreateCustomChannel(target, grpc::SslCredentials(ssl_opts),
                                    args);
 }

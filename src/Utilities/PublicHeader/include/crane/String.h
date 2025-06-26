@@ -30,6 +30,10 @@
 #include <ranges>
 #include <string>
 #include <vector>
+#include <openssl/pem.h>
+#include <openssl/x509.h>
+#include <expected>
+#include <regex>
 
 #include "crane/PublicHeader.h"
 
@@ -42,6 +46,9 @@ template <typename T = std::string, typename YamlNode, typename DefaultType>
 T YamlValueOr(const YamlNode &node, const DefaultType &default_value) {
   return node ? node.template as<T>() : default_value;
 }
+
+using CertPair = std::pair<std::string,   // CN
+                           std::string>;  // serial number
 
 std::string ReadFileIntoString(std::filesystem::path const &p);
 
@@ -89,5 +96,7 @@ std::string ReadableGrpcDresInNode(
     const crane::grpc::DedicatedResourceInNode &dres_in_node);
 
 std::string GenerateCommaSeparatedString(const int val);
+
+std::expected<CertPair, bool> ParseCertificate(const std::string &cert_pem);
 
 }  // namespace util

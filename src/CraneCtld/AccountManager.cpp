@@ -1218,7 +1218,6 @@ CraneExpected<std::string> AccountManager::SignUserCertificate(
     const std::string& alt_names) {
   util::write_lock_guard user_guard(m_rw_user_mutex_);
 
-  // TODO: 不存在用户，不应该每次都申请，需设置一个不存在用户证书
   std::string common_name = std::format("{}.{}", uid, g_config.ListenConf.DomainSuffix);
   auto sign_response =
       g_vault_client->Sign(csr_content, common_name, alt_names);
