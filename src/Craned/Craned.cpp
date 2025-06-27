@@ -115,6 +115,11 @@ void ParseConfig(int argc, char** argv) {
           g_config.CraneBaseDir /
           YamlValueOr(config["CranedUnixSockPath"], kDefaultCranedUnixSockPath);
 
+      g_config.CranedForPamUnixSockPath =
+          g_config.CraneBaseDir /
+          YamlValueOr(config["CranedForPamUnixSockPath"],
+                      kDefaultCranedForPamUnixSockPath);
+
       g_config.CranedScriptDir =
           g_config.CraneBaseDir /
           YamlValueOr(config["CranedScriptDir"], kDefaultCranedScriptDir);
@@ -132,11 +137,11 @@ void ParseConfig(int argc, char** argv) {
       g_config.ListenConf.CranedListenPort =
           YamlValueOr(config["CranedListenPort"], kCranedDefaultPort);
 
-      g_config.ListenConf.CranedForPamListenPort =
-        YamlValueOr(config["CranedForPamListenPort"], kCranedForPamDefaultPort);
-
       g_config.ListenConf.UnixSocketListenAddr =
           fmt::format("unix://{}", g_config.CranedUnixSockPath);
+
+      g_config.ListenConf.UnixSocketForPamListenAddr =
+          fmt::format("unix://{}", g_config.CranedForPamUnixSockPath);
 
       g_config.CompressedRpc =
           YamlValueOr<bool>(config["CompressedRpc"], false);
@@ -645,8 +650,8 @@ void StartServer() {
   g_server = std::make_unique<Craned::CranedServer>(g_config.ListenConf);
   g_ctld_client_sm->SetActionReadyCb([] { g_server->SetGrpcSrvReady(true); });
 
-  g_craned_for_pam_server = std::make_unique<Craned::CranedForPamServer>(g_config.ListenConf);
-
+  g_craned_for_pam_server =
+      std::make_unique<Craned::CranedForPamServer>(g_config.ListenConf);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
   g_ctld_client->StartGrpcCtldConnection();

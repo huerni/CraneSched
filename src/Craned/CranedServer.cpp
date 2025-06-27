@@ -307,6 +307,8 @@ CranedServer::CranedServer(const Config::CranedListenConf &listen_conf) {
              listen_conf.UnixSocketListenAddr, craned_listen_addr,
              listen_conf.CranedListenPort);
 
+  chmod(g_config.CranedUnixSockPath.c_str(), 0600);
+
   g_task_mgr->SetSigintCallback([p_server = m_server_.get()] {
     g_craned_for_pam_server->Shutdown();
     p_server->Shutdown();

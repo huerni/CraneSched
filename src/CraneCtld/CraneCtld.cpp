@@ -122,10 +122,8 @@ void ParseConfig(int argc, char** argv) {
           YamlValueOr(config["CraneCtldListenPort"], kCtldDefaultPort);
 
       g_config.ListenConf.CraneCtldForInternalListenPort =
-          YamlValueOr(config["CraneCtldForInternalListenPort"], kCtldForInternalDefaultPort);
-
-      g_config.ListenConf.CraneCtldForSignListenPort =
-          YamlValueOr(config["CraneCtldForSignListenPort"], kCtldForSignDefaultPort);
+          YamlValueOr(config["CraneCtldForInternalListenPort"],
+                      kCtldForInternalDefaultPort);
 
       if (config["CompressedRpc"])
         g_config.CompressedRpc = config["CompressedRpc"].as<bool>();
@@ -903,9 +901,6 @@ void InitializeCtldGlobalVariables() {
   }
 
   g_runtime_status.srv_ready.store(true, std::memory_order_release);
-  g_ctld_server = std::make_unique<Ctld::CtldServer>(g_config.ListenConf);
-  g_ctld_for_internal_server =
-      std::make_unique<Ctld::CtldForInternalServer>(g_config.ListenConf);
 }
 
 void CreateFolders() {
@@ -939,6 +934,7 @@ int StartServer() {
 
   g_ctld_server->Wait();
   g_ctld_for_internal_server->Wait();
+  g_ctld_for_sign_server->Wait();
 
   DestroyCtldGlobalVariables();
 

@@ -62,6 +62,7 @@ struct Config {
     std::string DomainSuffix;
 
     std::string UnixSocketListenAddr;
+    std::string UnixSocketForPamListenAddr;
   };
 
   struct PluginConfig {
@@ -82,6 +83,7 @@ struct Config {
   std::filesystem::path CranedMutexFilePath;
   std::filesystem::path CranedScriptDir;
   std::filesystem::path CranedUnixSockPath;
+  std::filesystem::path CranedForPamUnixSockPath;
 
   bool CranedForeground{};
 
