@@ -341,6 +341,7 @@ bool GrpcQueryPortFromCraned(pam_handle_t *pamh, uid_t uid,
   ClientContext context;
   Status status;
 
+  // TODO: when ssl, uid?
   request.set_ssh_remote_address(remote_address);
   request.set_ssh_remote_port(port_to_query);
   request.set_uid(uid);

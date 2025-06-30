@@ -157,6 +157,7 @@ grpc::Status CranedForPamServiceImpl::QueryTaskIdFromPortForward(
         request->ssh_remote_port(), reply_from_remote_service.task_id());
     return Status::OK;
   } else {
+    // TODO: use uid
     std::optional<TaskInfoOfUid> info_opt =
         g_job_mgr->QueryTaskInfoOfUid(request->uid());
     if (info_opt.has_value()) {
