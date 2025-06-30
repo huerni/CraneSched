@@ -25,6 +25,7 @@
 #include "CtldForInternalServer.h"
 #include "CtldForSignServer.h"
 #include "CtldPublicDefs.h"
+#include "Security/VaultClient.h"
 #include "TaskScheduler.h"
 #include "crane/PluginClient.h"
 #include "protos/PublicDefs.pb.h"
@@ -1339,6 +1340,40 @@ grpc::Status CraneCtldServiceImpl::EnableAutoPowerControl(
   }
 
   return grpc::Status::OK;
+}
+
+std::expected<uint32_t, grpc::Status>
+CraneCtldServiceImpl::CheckCertAllowedAndExtractUIDFromCert_(
+    const grpc::ServerContext *context) {
+  auto cert = context->auth_context()->FindPropertyValues("x509_pem_cert");
+  if (cert.empty())
+    return std::unexpected(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                        "Missing Certificates"));
+
+  std::string certificate = std::string(cert[0].data(), cert[0].size());
+  auto result = util::ParseCertificate(certificate);
+  if (!result) return std::unexpected(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                        "Invalid Certificates"));
+
+  if (!g_vault_client->IsCertAllowed(result.value().second))
+    std::unexpected(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                        "Invalid Certificates"));
+
+  std::vector<std::string> cn_parts = absl::StrSplit(result.value().first, '.');
+  if (cn_parts.size() < 1 || cn_parts[0].empty())
+    std::unexpected(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                        "Invalid Certificates"));
+
+  uint32_t uid = 0;
+
+  try {
+    uid = static_cast<uint32_t>(std::stoul(cn_parts[0]));
+  } catch (const std::exception& e) {
+    return std::unexpected(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                        "Invalid Certificates"));
+  }
+
+  return uid;
 }
 
 CtldServer::CtldServer(const Config::CraneCtldListenConf &listen_conf) {
