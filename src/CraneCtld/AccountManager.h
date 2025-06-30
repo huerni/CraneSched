@@ -171,6 +171,9 @@ class AccountManager {
                                                 const std::string& csr_content,
                                                 const std::string& alt_names);
 
+  CraneExpected<void> ResetUserCertificate(uint32_t uid,
+                                         const std::string& username);
+
  private:
   void InitDataMap_();
 

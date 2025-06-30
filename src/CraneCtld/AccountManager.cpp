@@ -1226,7 +1226,8 @@ CraneExpected<std::string> AccountManager::SignUserCertificate(
   if (!op_user->serial_number.empty())
     return std::unexpected(CraneErrCode::ERR_DUPLICATE_CERTIFICATE);
 
-  std::string common_name = std::format("{}.{}", uid, g_config.ListenConf.DomainSuffix);
+  std::string common_name =
+      std::format("{}.{}", uid, g_config.ListenConf.DomainSuffix);
   auto sign_response =
       g_vault_client->Sign(csr_content, common_name, alt_names);
   if (!sign_response)
@@ -1238,7 +1239,7 @@ CraneExpected<std::string> AccountManager::SignUserCertificate(
         g_db_client->UpdateEntityOne(MongodbClient::EntityType::USER, "$set",
                                      op_user->name, "serial_number",
                                      sign_response->serial_number);
-  };
+      };
 
   // Update to database
   if (!g_db_client->CommitTransaction(callback)) {
@@ -1251,6 +1252,45 @@ CraneExpected<std::string> AccountManager::SignUserCertificate(
               op_user->name);
 
   return sign_response->certificate;
+}
+
+CraneExpected<void> AccountManager::ResetUserCertificate(
+    uint32_t uid, const std::string& username) {
+  util::write_lock_guard user_guard(m_rw_user_mutex_);
+  CraneExpected<void> result{};
+
+  auto user_result = GetUserInfoByUidNoLock_(uid);
+  if (!user_result) return std::unexpected(user_result.error());
+  const User* op_user = user_result.value();
+
+  const auto p_target_user = GetExistedUserInfoNoLock_(username);
+  if (!p_target_user) return std::unexpected(CraneErrCode::ERR_INVALID_USER);
+
+  result = CheckIfUserHasHigherPrivThan_(*op_user, User::None);
+  if (!result) return result;
+
+  if (!p_target_user->serial_number.empty() &&
+      !g_vault_client->RevokeCert(p_target_user->serial_number)) {
+    return std::unexpected(CraneErrCode::ERR_REVOKE_CERTIFICATE);
+      }
+
+  // Save the serial number in the database.
+  mongocxx::client_session::with_transaction_cb callback =
+      [&](mongocxx::client_session* session) {
+        g_db_client->UpdateEntityOne(MongodbClient::EntityType::USER, "$set",
+                                     p_target_user->name, "serial_number", "");
+  };
+
+  // Update to database
+  if (!g_db_client->CommitTransaction(callback))
+    return std::unexpected(CraneErrCode::ERR_UPDATE_DATABASE);
+
+  m_user_map_[p_target_user->name]->serial_number = "";
+
+  CRANE_DEBUG("Reset User {} Certificate {}", p_target_user->name,
+              p_target_user->serial_number);
+
+  return result;
 }
 
 CraneExpected<void> AccountManager::CheckAddUserAllowedPartitionNoLock_(

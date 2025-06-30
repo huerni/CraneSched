@@ -1139,6 +1139,47 @@ grpc::Status CraneCtldServiceImpl::BlockAccountOrUser(
   return grpc::Status::OK;
 }
 
+
+grpc::Status CraneCtldServiceImpl::ResetUserCredential(
+    grpc::ServerContext *context,
+    const crane::grpc::ResetUserCredentialRequest *request,
+    crane::grpc::ResetUserCredentialReply *response) {
+
+  // auto extract_result = CheckCertAllowedAndExtractUIDFromCert_(context);
+  // if (!extract_result)
+  //   return grpc::Status(grpc::UNAUTHENTICATED, "Authentication failed");
+  //
+  // uint32_t uid = extract_result.value();
+
+  std::unordered_set<std::string> user_list{request->user_list().begin(),
+                                            request->user_list().end()};
+
+  if (request->user_list().empty()) {
+    const auto user_map_ptr = g_account_manager->GetAllUserInfo();
+    for (const auto &username : *user_map_ptr | std::views::keys) {
+      user_list.insert(username);
+    }
+  }
+
+  for (const auto &username : user_list) {
+    // TODO: set uid
+    auto result = g_account_manager->ResetUserCertificate(0, username);
+    if (!result) {
+      auto *new_err_record = response->mutable_rich_error_list()->Add();
+      new_err_record->set_description(username);
+      new_err_record->set_code(result.error());
+    }
+  }
+
+  if (!response->rich_error_list().empty()) {
+    response->set_ok(false);
+  } else {
+    response->set_ok(true);
+  }
+
+  return grpc::Status::OK;
+}
+
 grpc::Status CraneCtldServiceImpl::QueryClusterInfo(
     grpc::ServerContext *context,
     const crane::grpc::QueryClusterInfoRequest *request,
