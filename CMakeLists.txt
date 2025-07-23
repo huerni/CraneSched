@@ -158,12 +158,12 @@ add_compile_definitions(CRANE_LOG_LEVEL=CRANE_LOG_LEVEL_${CRANE_MIN_LOG_LEVEL})
 message(STATUS "Minimal log level is set to ${CRANE_MIN_LOG_LEVEL}")
 
 # Generate the building timestamp
-string(TIMESTAMP BUILD_TIMESTAMP "%a, %d %b %Y %H:%M:%S %z")
+#string(TIMESTAMP BUILD_TIMESTAMP "%a, %d %b %Y %H:%M:%S %z")
+#add_compile_definitions(CRANE_BUILD_TIMESTAMP="${BUILD_TIMESTAMP}")
+#message(STATUS "Building Time: ${BUILD_TIMESTAMP}")
 
-add_compile_definitions(CRANE_BUILD_TIMESTAMP="${BUILD_TIMESTAMP}")
 add_compile_definitions(CRANE_VERSION_STRING="${VERSION_CONTENT}")
 message(STATUS "Version: ${VERSION_CONTENT}")
-message(STATUS "Building Time: ${BUILD_TIMESTAMP}")
 
 # Set colorized output when ninja build system is used.
 if (${CRANE_FORCE_COLORED_OUTPUT})
@@ -368,6 +368,9 @@ if (CRANE_ENABLE_TESTS)
     add_subdirectory(test EXCLUDE_FROM_ALL)
 endif ()
 
+# Adopt GNU standard installation directories
+include(GNUInstallDirs)
+
 # Generate the configuration file
 configure_file(${CMAKE_SOURCE_DIR}/etc/cranectld.service.in ${CMAKE_BINARY_DIR}/etc/cranectld.service)
 configure_file(${CMAKE_SOURCE_DIR}/etc/craned.service.in ${CMAKE_BINARY_DIR}/etc/craned.service)
@@ -391,13 +394,13 @@ set(CPACK_COMPONENTS_ALL cranedc cranectldc)
 
 # Install binaries
 install(TARGETS cranectld
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT cranectldc
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_WRITE GROUP_EXECUTE WORLD_READ WORLD_WRITE WORLD_EXECUTE
 )
 
 install(TARGETS craned
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
         COMPONENT cranedc
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_WRITE GROUP_EXECUTE WORLD_READ WORLD_WRITE WORLD_EXECUTE
 )
@@ -423,20 +426,23 @@ install(FILES
         COMPONENT cranedc
         PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ)
 
-# Install configuration files
+# Install configuration files (644)
 install(FILES ${CMAKE_SOURCE_DIR}/etc/config.yaml
         DESTINATION /etc/crane/
+        RENAME config.yaml.sample
         COMPONENT cranectldc
         PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ)
 
 install(FILES ${CMAKE_SOURCE_DIR}/etc/config.yaml
         DESTINATION /etc/crane/
+        RENAME config.yaml.sample
         COMPONENT cranedc
         PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ)
 
 # Only cranectld needs database.yaml and permission should be 600
 install(FILES ${CMAKE_SOURCE_DIR}/etc/database.yaml
         DESTINATION /etc/crane/
+        RENAME database.yaml.sample
         COMPONENT cranectldc
         PERMISSIONS OWNER_READ OWNER_WRITE)
 
@@ -467,7 +473,53 @@ set(CPACK_RPM_COMPRESSION_TYPE "xz")
 # DEB
 set(CPACK_DEB_COMPONENT_INSTALL ON)
 set(CPACK_DEBIAN_COMPRESSION_TYPE "xz")
-# Seperate the debuginfo to avoid large DEB package
+# Separate the debuginfo to avoid large DEB package
 set(CPACK_DEBIAN_DEBUGINFO_PACKAGE ON)
+
+# Create post-installation script for creating crane user and directory
+file(WRITE ${CMAKE_BINARY_DIR}/post_install.sh 
+"#!/bin/bash
+# Create crane user if it doesn't exist
+if ! id -u crane &>/dev/null; then
+    useradd -r -s /sbin/nologin crane
+fi
+
+# Base Directory (755)
+mkdir -p /var/crane
+chown -R crane:crane /var/crane
+chmod 755 /var/crane
+
+# Config Directory (755)
+mkdir -p /etc/crane
+chown -R crane:crane /etc/crane
+chmod 755 /etc/crane
+
+# Handle configuration files
+if [ ! -f /etc/crane/config.yaml ]; then
+    if [ -f /etc/crane/config.yaml.sample ]; then
+        cp /etc/crane/config.yaml.sample /etc/crane/config.yaml
+        chown crane:crane /etc/crane/config.yaml
+        chmod 644 /etc/crane/config.yaml
+        echo \"Created new configuration file: /etc/crane/config.yaml\"
+    fi
+fi
+
+if [ ! -f /etc/crane/database.yaml ]; then
+    if [ -f /etc/crane/database.yaml.sample ]; then
+        cp /etc/crane/database.yaml.sample /etc/crane/database.yaml
+        chown crane:crane /etc/crane/database.yaml
+        chmod 600 /etc/crane/database.yaml
+        echo \"Created new configuration file: /etc/crane/database.yaml\"
+    fi
+fi
+
+exit 0
+")
+
+# Set execute permissions on the post-install script
+file(CHMOD ${CMAKE_BINARY_DIR}/post_install.sh 
+     PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE "${CMAKE_BINARY_DIR}/post_install.sh")
+set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_BINARY_DIR}/post_install.sh;")
 
 include(CPack)

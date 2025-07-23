@@ -166,13 +166,28 @@ class CforedStreamWriter {
       ABSL_GUARDED_BY(m_stream_mtx_);
 };
 
-class CtldForCforedServer;
+class CtldForInternalServer;
 
-class CtldForCforedServiceImpl final
-    : public crane::grpc::CraneCtldForCfored::Service {
+class CtldForInternalServiceImpl final
+    : public crane::grpc::CraneCtldForInternal::Service {
  public:
-  explicit CtldForCforedServiceImpl(CtldForCforedServer *server)
-      : m_ctld_server_(server) {}
+  explicit CtldForInternalServiceImpl(CtldForInternalServer *server)
+      : m_ctld_for_internal_server_(server) {}
+
+  grpc::Status TaskStatusChange(
+      grpc::ServerContext *context,
+      const crane::grpc::TaskStatusChangeRequest *request,
+      crane::grpc::TaskStatusChangeReply *response) override;
+
+  grpc::Status CranedTriggerReverseConn(
+      grpc::ServerContext *context,
+      const crane::grpc::CranedTriggerReverseConnRequest *request,
+      google::protobuf::Empty *response) override;
+
+  grpc::Status CranedRegister(
+      grpc::ServerContext *context,
+      const crane::grpc::CranedRegisterRequest *request,
+      crane::grpc::CranedRegisterReply *response) override;
 
   grpc::Status CforedStream(
       grpc::ServerContext *context,
@@ -181,15 +196,13 @@ class CtldForCforedServiceImpl final
       override;
 
  private:
-  CtldForCforedServer *m_ctld_server_;
+  CtldForInternalServer *m_ctld_for_internal_server_;
 };
 
-/***
- * Note: There should be only ONE instance of CtldServer!!!!
- */
-class CtldForCforedServer {
+class CtldForInternalServer {
  public:
-  explicit CtldForCforedServer(const Config::CraneCtldListenConf &listen_conf);
+  explicit CtldForInternalServer(
+      const Config::CraneCtldListenConf &listen_conf);
 
   inline void Wait() { m_server_->Wait(); }
 
@@ -206,16 +219,16 @@ class CtldForCforedServer {
 
   using Mutex = util::mutex;
 
-  std::unique_ptr<CtldForCforedServiceImpl> m_service_impl_;
+  std::unique_ptr<CtldForInternalServiceImpl> m_service_impl_;
   std::unique_ptr<Server> m_server_;
 
   Mutex m_mtx_;
   HashMap<std::string /* cfored_name */, HashSet<task_id_t>>
       m_cfored_running_tasks_ ABSL_GUARDED_BY(m_mtx_);
 
-  friend class CtldForCforedServiceImpl;
+  friend class CtldForInternalServiceImpl;
 };
 
 }  // namespace Ctld
 
-inline std::unique_ptr<Ctld::CtldForCforedServer> g_ctld_for_cfored_server;
+inline std::unique_ptr<Ctld::CtldForInternalServer> g_ctld_for_internal_server;

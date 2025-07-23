@@ -21,14 +21,16 @@
 #include "CranedPreCompiledHeader.h"
 // Precompiled header comes first
 
-#include "crane/GrpcHelper.h"
+#include "crane/Network.h"
 #include "crane/OS.h"
 
 namespace Craned {
 
 inline constexpr uint64_t kEvSigChldResendMs = 500;
+inline constexpr uint64_t kRegisterOperationTimeoutMs = 5'000;
 
 using EnvMap = std::unordered_map<std::string, std::string>;
+using RegToken = google::protobuf::Timestamp;
 
 struct TaskStatusChangeQueueElem {
   task_id_t task_id{};
@@ -65,6 +67,7 @@ struct Config {
     TlsCertsConfig TlsCerts;
 
     std::string UnixSocketListenAddr;
+    std::string UnixSocketForPamListenAddr;
   };
 
   std::string DomainSuffix;
@@ -79,15 +82,15 @@ struct Config {
   bool CompressedRpc{};
 
   std::string ControlMachine;
-  std::string CraneCtldListenPort;
-  std::string CraneCtldForCranedPort;
+  std::string CraneCtldForInternalListenPort;
   std::string CranedDebugLevel;
 
-  std::string CraneBaseDir;
-  std::string CranedLogFile;
-  std::string CranedMutexFilePath;
-  std::string CranedScriptDir;
-  std::string CranedUnixSockPath;
+  std::filesystem::path CraneBaseDir;
+  std::filesystem::path CranedLogFile;
+  std::filesystem::path CranedMutexFilePath;
+  std::filesystem::path CranedScriptDir;
+  std::filesystem::path CranedUnixSockPath;
+  std::filesystem::path CranedForPamUnixSockPath;
 
   bool CranedForeground{};
 
@@ -98,6 +101,7 @@ struct Config {
     SystemRelInfo SysInfo;
     absl::Time CranedStartTime;
     absl::Time SystemBootTime;
+    std::vector<crane::NetworkInterface> NetworkInterfaces;
   };
 
   CranedMeta CranedMeta;
@@ -109,7 +113,7 @@ struct Config {
   std::unordered_map<std::string, Partition> Partitions;
 };
 
-inline Config g_config;
+inline Config g_config{};
 }  // namespace Craned
 
 inline std::unique_ptr<BS::thread_pool> g_thread_pool;

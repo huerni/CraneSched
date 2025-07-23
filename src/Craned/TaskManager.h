@@ -37,9 +37,9 @@ struct BatchMetaInProcessInstance {
 class ProcessInstance {
  public:
   ProcessInstance(std::string exec_path, std::list<std::string> arg_list)
-      : m_executive_path_(std::move(exec_path)),
+      : m_pid_(0),
+        m_executive_path_(std::move(exec_path)),
         m_arguments_(std::move(arg_list)),
-        m_pid_(0),
         m_user_data_(nullptr) {}
 
   ~ProcessInstance() {
@@ -84,7 +84,7 @@ class ProcessInstance {
 
  private:
   /* ------------- Fields set by SpawnProcessInInstance_  ---------------- */
-  pid_t m_pid_;
+  pid_t m_pid_{-1};
 
   /* ------- Fields set by the caller of SpawnProcessInInstance_  -------- */
   std::string m_executive_path_;
@@ -105,7 +105,7 @@ class ProcessInstance {
    */
   std::function<void(bool, int, void*)> m_finish_cb_;
 
-  void* m_user_data_;
+  void* m_user_data_{nullptr};
   std::function<void(void*)> m_clean_cb_;
 };
 
@@ -131,39 +131,17 @@ struct CrunMetaInTaskInstance : MetaInTaskInstance {
 
 // also arg for EvSigchldTimerCb_
 struct ProcSigchldInfo {
-  pid_t pid;
-  bool is_terminated_by_signal;
-  int value;
+  pid_t pid{};
+  bool is_terminated_by_signal{};
+  int value{};
 
   std::shared_ptr<uvw::timer_handle> resend_timer{nullptr};
 };
 
 // Todo: Task may consists of multiple subtasks
 struct TaskInstance {
-  ~TaskInstance() {
-    if (termination_timer) {
-      termination_timer->close();
-    }
-
-    if (this->IsCrun()) {
-      auto* crun_meta = GetCrunMeta();
-
-      close(crun_meta->task_input_fd);
-      // For crun pty job, avoid close same fd twice
-      if (crun_meta->task_output_fd != crun_meta->task_input_fd)
-        close(crun_meta->task_output_fd);
-
-      if (!crun_meta->x11_auth_path.empty() &&
-          !absl::EndsWith(crun_meta->x11_auth_path, "XXXXXX")) {
-        std::error_code ec;
-        bool ok = std::filesystem::remove(crun_meta->x11_auth_path, ec);
-        if (!ok)
-          CRANE_ERROR("Failed to remove x11 auth {} for task #{}: {}",
-                      crun_meta->x11_auth_path, this->task.task_id(),
-                      ec.message());
-      }
-    }
-  }
+  TaskInstance() = default;
+  ~TaskInstance();
 
   bool IsCrun() const;
   bool IsCalloc() const;
@@ -174,11 +152,11 @@ struct TaskInstance {
 
   crane::grpc::TaskToD task;
 
-  PasswordEntry pwd_entry;
-  std::unique_ptr<MetaInTaskInstance> meta;
+  PasswordEntry pwd_entry{};
+  std::unique_ptr<MetaInTaskInstance> meta{};
 
   std::string cgroup_path;
-  CgroupInterface* cgroup;
+  CgroupInterface* cgroup{};
   std::shared_ptr<uvw::timer_handle> termination_timer{nullptr};
 
   // Task execution results
@@ -188,7 +166,7 @@ struct TaskInstance {
   bool terminated_by_timeout{false};
   ProcSigchldInfo sigchld_info{};
 
-  absl::flat_hash_map<pid_t, std::unique_ptr<ProcessInstance>> processes;
+  absl::flat_hash_map<pid_t, std::unique_ptr<ProcessInstance>> processes{};
 };
 
 /**
@@ -205,15 +183,13 @@ class TaskManager {
 
   CraneErrCode ExecuteTaskAsync(crane::grpc::TaskToD const& task);
 
-  CraneExpected<task_id_t> QueryTaskIdFromPidAsync(pid_t pid);
-
   CraneExpected<EnvMap> QueryTaskEnvMapAsync(task_id_t task_id);
 
   void TerminateTaskAsync(uint32_t task_id);
 
-  void MarkTaskAsOrphanedAndTerminateAsync(task_id_t task_id);
+  std::future<void> MarkTaskAsOrphanedAndTerminateAsync(task_id_t task_id);
 
-  bool CheckTaskStatusAsync(task_id_t task_id, crane::grpc::TaskStatus* status);
+  std::set<task_id_t> QueryRunningTasksAsync();
 
   bool ChangeTaskTimeLimitAsync(task_id_t task_id, absl::Duration time_limit);
 
@@ -238,11 +214,6 @@ class TaskManager {
     gid_t gid;
   };
 
-  struct EvQueueQueryTaskIdFromPid {
-    std::promise<CraneExpected<task_id_t>> task_id_prom;
-    pid_t pid;
-  };
-
   struct EvQueueQueryTaskEnvMap {
     std::promise<CraneExpected<EnvMap>> env_prom;
     task_id_t task_id;
@@ -261,11 +232,12 @@ class TaskManager {
     bool terminated_by_timeout{false};  // If the task is canceled by user,
                                         // task->status=Timeout
     bool mark_as_orphaned{false};
+    std::promise<void> termination_prom{};
   };
 
-  struct CheckTaskStatusQueueElem {
-    task_id_t task_id;
-    std::promise<std::pair<bool, crane::grpc::TaskStatus>> status_prom;
+  struct QueryTasksStatusQueueElem {
+    std::promise<std::unordered_map<task_id_t, crane::grpc::TaskStatus>>
+        status_prom;
   };
 
   static std::string ParseFilePathPattern_(const std::string& path_pattern,
@@ -275,7 +247,7 @@ class TaskManager {
   void LaunchTaskInstanceMt_(TaskInstance* instance);
 
   CraneErrCode SpawnProcessInInstance_(TaskInstance* instance,
-                                   ProcessInstance* process);
+                                       ProcessInstance* process);
 
   const TaskInstance* FindInstanceByTaskId_(uint32_t task_id);
 
@@ -342,7 +314,8 @@ class TaskManager {
    * if the signal is invalid, kInvalidParam is returned.
    * otherwise, kGenericFailure is returned.
    */
-  static CraneErrCode KillProcessInstance_(const ProcessInstance* proc, int signum);
+  static CraneErrCode KillProcessInstance_(const ProcessInstance* proc,
+                                           int signum);
 
   // Note: the three maps below are NOT protected by any mutex.
   //  They should be modified in libev callbacks to avoid races.
@@ -379,11 +352,9 @@ class TaskManager {
   void EvCleanSigchldQueueCb_();
 
   // Callback function to handle SIGINT sent by Ctrl+C
-  void EvSigintCb_();
+  void EvGracefulExitCb_();
 
   void EvCleanGrpcExecuteTaskQueueCb_();
-
-  void EvCleanGrpcQueryTaskIdFromPidQueueCb_();
 
   void EvCleanGrpcQueryTaskEnvQueueCb_();
 
@@ -391,7 +362,7 @@ class TaskManager {
 
   void EvCleanTerminateTaskQueueCb_();
 
-  void EvCleanCheckTaskStatusQueueCb_();
+  void EvCleanQueryRunningTasksQueueCb_();
 
   void EvCleanChangeTaskTimeLimitQueueCb_();
 
@@ -406,9 +377,7 @@ class TaskManager {
   // When this event is triggered, the TaskManager will not accept
   // any more new tasks and quit as soon as all existing task end.
   std::shared_ptr<uvw::signal_handle> m_sigint_handle_;
-
-  std::shared_ptr<uvw::async_handle> m_query_task_id_from_pid_async_handle_;
-  ConcurrentQueue<EvQueueQueryTaskIdFromPid> m_query_task_id_from_pid_queue_;
+  std::shared_ptr<uvw::signal_handle> m_sigterm_handle_;
 
   std::shared_ptr<uvw::async_handle>
       m_query_task_environment_variables_async_handle_;
@@ -431,8 +400,9 @@ class TaskManager {
   std::shared_ptr<uvw::async_handle> m_terminate_task_async_handle_;
   ConcurrentQueue<TaskTerminateQueueElem> m_task_terminate_queue_;
 
-  std::shared_ptr<uvw::async_handle> m_check_task_status_async_handle_;
-  ConcurrentQueue<CheckTaskStatusQueueElem> m_check_task_status_queue_;
+  std::shared_ptr<uvw::async_handle> m_query_running_task_async_handle_;
+  ConcurrentQueue<std::promise<std::set<task_id_t>>>
+      m_query_running_task_queue_;
 
   // The function which will be called when SIGINT is triggered.
   std::function<void()> m_sigint_cb_;
@@ -447,7 +417,7 @@ class TaskManager {
 
   std::thread m_uvw_thread_;
 
-  static inline TaskManager* m_instance_ptr_;
+  static inline TaskManager* s_instance_ptr_;
 };
 }  // namespace Craned
 

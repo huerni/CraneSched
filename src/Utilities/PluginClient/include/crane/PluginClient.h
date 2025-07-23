@@ -29,6 +29,7 @@
 #include <thread>
 #include <vector>
 
+#include "crane/Network.h"
 #include "crane/PublicHeader.h"
 #include "protos/Crane.grpc.pb.h"
 #include "protos/Crane.pb.h"
@@ -52,6 +53,9 @@ class PluginClient {
     END,
     CREATE_CGROUP,
     DESTROY_CGROUP,
+    INSERT_EVENT,
+    UPDATE_POWER_STATE,
+    REGISTER_CRANED,
     HookTypeCount,
   };
 
@@ -66,12 +70,21 @@ class PluginClient {
   // Launched by Ctld
   void StartHookAsync(std::vector<crane::grpc::TaskInfo> tasks);
   void EndHookAsync(std::vector<crane::grpc::TaskInfo> tasks);
+  void NodeEventHookAsync(
+      std::vector<crane::grpc::plugin::CranedEventInfo> events);
 
   // Launched by Craned
-  void CreateCgroupHookAsync(
-      task_id_t task_id, const std::string& cgroup,
-      const crane::grpc::DedicatedResourceInNode& resource);
+  void CreateCgroupHookAsync(task_id_t task_id, const std::string& cgroup,
+                             const crane::grpc::ResourceInNode& resource);
   void DestroyCgroupHookAsync(task_id_t task_id, const std::string& cgroup);
+
+  void UpdatePowerStateHookAsync(const std::string& craned_id,
+                                 crane::grpc::CranedControlState state,
+                                 bool enable_auto_power_control = true);
+
+  void RegisterCranedHookAsync(
+      const std::string& craned_id,
+      const std::vector<crane::NetworkInterface>& interfaces);
 
  private:
   // HookDispatchFunc is a function pointer type that handles different
@@ -86,7 +99,12 @@ class PluginClient {
                                      google::protobuf::Message* msg);
   grpc::Status SendDestroyCgroupHook_(grpc::ClientContext* context,
                                       google::protobuf::Message* msg);
-
+  grpc::Status NodeEventHook_(grpc::ClientContext* context,
+                              google::protobuf::Message* msg);
+  grpc::Status SendUpdatePowerStateHook_(grpc::ClientContext* context,
+                                         google::protobuf::Message* msg);
+  grpc::Status SendRegisterCranedHook_(grpc::ClientContext* context,
+                                       google::protobuf::Message* msg);
   void AsyncSendThread_();
 
   std::shared_ptr<Channel> m_channel_;
@@ -100,10 +118,12 @@ class PluginClient {
   // Use this array to dispatch the hook event to the corresponding function in
   // O(1) time.
   static constexpr std::array<HookDispatchFunc, size_t(HookType::HookTypeCount)>
-      s_hook_dispatch_funcs_{{&PluginClient::SendStartHook_,
-                              &PluginClient::SendEndHook_,
-                              &PluginClient::SendCreateCgroupHook_,
-                              &PluginClient::SendDestroyCgroupHook_}};
+      s_hook_dispatch_funcs_{
+          {&PluginClient::SendStartHook_, &PluginClient::SendEndHook_,
+           &PluginClient::SendCreateCgroupHook_,
+           &PluginClient::SendDestroyCgroupHook_, &PluginClient::NodeEventHook_,
+           &PluginClient::SendUpdatePowerStateHook_,
+           &PluginClient::SendRegisterCranedHook_}};
 };
 
 }  // namespace plugin

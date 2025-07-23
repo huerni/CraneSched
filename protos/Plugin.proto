@@ -18,10 +18,11 @@
 
 syntax = "proto3";
 
-package crane.grpc.plugin; 
+package crane.grpc.plugin;
 option go_package = "/protos";
 
 import "PublicDefs.proto";
+import "google/protobuf/timestamp.proto";
 
 message StartHookRequest {
   repeated TaskInfo task_info_list = 1;
@@ -54,7 +55,7 @@ message EndHookReply {
 message CreateCgroupHookRequest {
   uint32 task_id = 1;
   string cgroup = 2;
-  DedicatedResourceInNode resource = 3;
+  ResourceInNode resource = 3;
 }
 
 message CreateCgroupHookReply {
@@ -70,10 +71,52 @@ message DestroyCgroupHookReply {
   bool ok = 1;
 }
 
+message CranedEventInfo {
+  google.protobuf.Timestamp start_time = 1;
+  string node_name = 2;
+  string cluster_name = 3;
+  string reason = 4;
+  oneof state_type {
+    CranedPowerState power_state = 5;
+    CranedControlState control_state = 6;
+  }
+  uint32 uid = 7;
+}
+
+message NodeEventHookRequest {
+  repeated CranedEventInfo event_info_list = 1;
+}
+
+message NodeEventHookReply {
+  bool ok = 1;
+}
+
+message UpdatePowerStateHookRequest {
+  string craned_id = 1;
+  CranedControlState state = 2;
+  bool enable_auto_power_control = 3;
+}
+
+message UpdatePowerStateHookReply {
+  bool ok = 1;
+}
+
+message RegisterCranedHookRequest {
+  string craned_id = 1;
+  repeated NetworkInterface network_interfaces = 2;
+}
+
+message RegisterCranedHookReply {
+  bool ok = 1;
+}
+
 service CranePluginD {
-  /* ----------------------------------- Called from CraneCtld ---------------------------------------------------- */  
+  /* ----------------------------------- Called from CraneCtld ---------------------------------------------------- */
   rpc StartHook(StartHookRequest) returns (StartHookReply);
   rpc EndHook(EndHookRequest) returns (EndHookReply);
+  rpc NodeEventHook(NodeEventHookRequest) returns (NodeEventHookReply);
+  rpc UpdatePowerStateHook(UpdatePowerStateHookRequest) returns (UpdatePowerStateHookReply);
+  rpc RegisterCranedHook(RegisterCranedHookRequest) returns (RegisterCranedHookReply);
 
   /* ----------------------------------- Called from Craned ---------------------------------------------------- */
   rpc CreateCgroupHook(CreateCgroupHookRequest) returns (CreateCgroupHookReply);

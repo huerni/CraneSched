@@ -3,6 +3,8 @@ add_executable(craned
         CtldClient.cpp
         CgroupManager.h
         CgroupManager.cpp
+        JobManager.cpp
+        JobManager.h
         CforedClient.h
         CforedClient.cpp
         TaskManager.h
@@ -11,10 +13,13 @@ add_executable(craned
         DeviceManager.h
         CranedServer.h
         CranedServer.cpp
+        CranedForPamServer.h
+        CranedForPamServer.cpp
         CranedPublicDefs.h
         Craned.cpp
 
         CranedPreCompiledHeader.h
+
 )
 
 target_precompile_headers(craned PRIVATE CranedPreCompiledHeader.h)

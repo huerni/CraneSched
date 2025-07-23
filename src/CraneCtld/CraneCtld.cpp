@@ -28,21 +28,20 @@
 
 #include "AccountManager.h"
 #include "AccountMetaContainer.h"
-#include "CranedKeeper.h"
 #include "CranedMetaContainer.h"
-#include "CtldForCforedServer.h"
-#include "CtldForCranedServer.h"
-#include "CtldPlainServer.h"
 #include "CtldPublicDefs.h"
-#include "CtldSecureServer.h"
 #include "DbClient.h"
 #include "EmbeddedDbClient.h"
+#include "RpcService/CranedKeeper.h"
+#include "RpcService/CtldForInternalServer.h"
+#include "RpcService/CtldGrpcServer.h"
+#include "Security/VaultClient.h"
 #include "TaskScheduler.h"
 #include "crane/Network.h"
 #include "crane/PluginClient.h"
-#include "crane/VaultClient.h"
 
 void ParseConfig(int argc, char** argv) {
+  using util::YamlValueOr;
   cxxopts::Options options("cranectld");
 
   // clang-format off
@@ -75,7 +74,6 @@ void ParseConfig(int argc, char** argv) {
 
   if (parsed_args.count("version") > 0) {
     fmt::print("Version: {}\n", CRANE_VERSION_STRING);
-    fmt::print("Build Time: {}\n", CRANE_BUILD_TIMESTAMP);
     std::exit(0);
   }
 
@@ -85,88 +83,46 @@ void ParseConfig(int argc, char** argv) {
     try {
       YAML::Node config = YAML::LoadFile(config_path);
 
-      if (config["CraneBaseDir"])
-        g_config.CraneBaseDir = config["CraneBaseDir"].as<std::string>();
-      else
-        g_config.CraneBaseDir = kDefaultCraneBaseDir;
+      if (config["ClusterName"])
+        g_config.CraneClusterName = config["ClusterName"].as<std::string>();
 
-      if (config["CraneCtldLogFile"])
-        g_config.CraneCtldLogFile =
-            g_config.CraneBaseDir +
-            config["CraneCtldLogFile"].as<std::string>();
-      else
-        g_config.CraneCtldLogFile =
-            g_config.CraneBaseDir + kDefaultCraneCtldLogPath;
+      g_config.CraneBaseDir =
+          YamlValueOr(config["CraneBaseDir"], kDefaultCraneBaseDir);
 
-      if (config["CraneCtldDebugLevel"])
-        g_config.CraneCtldDebugLevel =
-            config["CraneCtldDebugLevel"].as<std::string>();
-      else
-        g_config.CraneCtldDebugLevel = "info";
+      g_config.CraneCtldLogFile =
+          g_config.CraneBaseDir /
+          YamlValueOr(config["CraneCtldLogFile"], kDefaultCraneCtldLogPath);
+
+      g_config.CraneCtldDebugLevel =
+          YamlValueOr(config["CraneCtldDebugLevel"], "info");
 
       // spdlog should be initialized as soon as possible
-      spdlog::level::level_enum log_level;
-      if (g_config.CraneCtldDebugLevel == "trace") {
-        log_level = spdlog::level::trace;
-      } else if (g_config.CraneCtldDebugLevel == "debug") {
-        log_level = spdlog::level::debug;
-      } else if (g_config.CraneCtldDebugLevel == "info") {
-        log_level = spdlog::level::info;
-      } else if (g_config.CraneCtldDebugLevel == "warn") {
-        log_level = spdlog::level::warn;
-      } else if (g_config.CraneCtldDebugLevel == "error") {
-        log_level = spdlog::level::err;
+      std::optional log_level = StrToLogLevel(g_config.CraneCtldDebugLevel);
+      if (log_level.has_value()) {
+        InitLogger(log_level.value(), g_config.CraneCtldLogFile, true);
       } else {
         fmt::print(stderr, "Illegal debug-level format.");
         std::exit(1);
       }
-
-      InitLogger(log_level, g_config.CraneCtldLogFile);
 
       // External configuration file path
       if (!parsed_args.count("db-config") && config["DbConfigPath"]) {
         db_config_path = config["DbConfigPath"].as<std::string>();
       }
 
-      if (config["CraneCtldMutexFilePath"])
-        g_config.CraneCtldMutexFilePath =
-            g_config.CraneBaseDir +
-            config["CraneCtldMutexFilePath"].as<std::string>();
-      else
-        g_config.CraneCtldMutexFilePath =
-            g_config.CraneBaseDir + kDefaultCraneCtldMutexFile;
+      g_config.CraneCtldMutexFilePath =
+          g_config.CraneBaseDir / YamlValueOr(config["CraneCtldMutexFilePath"],
+                                              kDefaultCraneCtldMutexFile);
 
-      if (config["CraneCtldListenAddr"])
-        g_config.ListenConf.CraneCtldListenAddr =
-            config["CraneCtldListenAddr"].as<std::string>();
-      else
-        g_config.ListenConf.CraneCtldListenAddr = "0.0.0.0";
+      g_config.ListenConf.CraneCtldListenAddr =
+          YamlValueOr(config["CraneCtldListenAddr"], "0.0.0.0");
 
-      if (config["CraneCtldListenPort"])
-        g_config.ListenConf.CraneCtldListenPort =
-            config["CraneCtldListenPort"].as<std::string>();
-      else
-        g_config.ListenConf.CraneCtldListenPort = kCtldDefaultPort;
+      g_config.ListenConf.CraneCtldListenPort =
+          YamlValueOr(config["CraneCtldListenPort"], kCtldDefaultPort);
 
-      if (config["CraneCtldForCranedListenPort"])
-        g_config.ListenConf.CraneCtldForCranedListenPort =
-            config["CraneCtldForCranedListenPort"].as<std::string>();
-      else
-        g_config.ListenConf.CraneCtldForCranedListenPort =
-            kCtldForCranedDefaultPort;
-
-      if (config["CraneCtldForCforedListenPort"])
-        g_config.ListenConf.CraneCtldForCforedListenPort =
-            config["CraneCtldForCforedListenPort"].as<std::string>();
-      else
-        g_config.ListenConf.CraneCtldForCforedListenPort =
-            kCtldForCforedDefaultPort;
-
-      if (config["CraneCtldPlainListenPort"])
-        g_config.ListenConf.CraneCtldPlainListenPort =
-            config["CraneCtldPlainListenPort"].as<std::string>();
-      else
-        g_config.ListenConf.CraneCtldPlainListenPort = kCtldPlainDefaultPort;
+      g_config.ListenConf.CraneCtldForInternalListenPort =
+          YamlValueOr(config["CraneCtldForInternalListenPort"],
+                      kCtldForInternalDefaultPort);
 
       if (config["CompressedRpc"])
         g_config.CompressedRpc = config["CompressedRpc"].as<bool>();
@@ -299,108 +255,12 @@ void ParseConfig(int argc, char** argv) {
       if (config["DomainSuffix"])
         g_config.DomainSuffix = config["DomainSuffix"].as<std::string>();
 
-      if (config["Vault"]) {
-        const auto& vault_config = config["Vault"];
-
-        ServerCertificateConfig& external_certs =
-            g_config.VaultConf.ExternalCerts;
-        CACertificateConfig& external_ca_certs =
-            g_config.VaultConf.ExternalCACerts;
-
-        if (vault_config["Addr"])
-          g_config.VaultConf.Addr = vault_config["Addr"].as<std::string>();
-
-        if (vault_config["Port"])
-          g_config.VaultConf.Port = vault_config["Port"].as<std::string>();
-
-        if (vault_config["Tls"])
-          g_config.VaultConf.Tls = vault_config["Tls"].as<bool>();
-        else
-          g_config.VaultConf.Tls = false;
-
-        if (vault_config["TokenPath"]) {
-          std::string token_path = vault_config["TokenPath"].as<std::string>();
-          try {
-            g_config.VaultConf.Token = util::ReadFileIntoString(token_path);
-          } catch (const std::exception& e) {
-            CRANE_ERROR("Read vault token file error: {}", e.what());
-            std::exit(1);
-          }
-        } else {
-          CRANE_ERROR("vault token path is empty");
-          std::exit(1);
-        }
-
-        if (vault_config["Nodes"]) {
-          std::string nodes = vault_config["Nodes"].as<std::string>();
-          std::list<std::string> name_list;
-          if (!util::ParseHostList(absl::StripAsciiWhitespace(nodes).data(),
-                                   &name_list)) {
-            CRANE_ERROR("Illegal login node name string format.");
-            std::exit(1);
-          }
-          g_config.VaultConf.AllowedNodes = std::unordered_set<std::string>(
-              name_list.begin(), name_list.end());
-        }
-
-        if (vault_config["ExternalCertFilePath"]) {
-          external_certs.ServerCertFilePath =
-              vault_config["ExternalCertFilePath"].as<std::string>();
-
-          try {
-            external_certs.ServerCertContent =
-                util::ReadFileIntoString(external_certs.ServerCertFilePath);
-          } catch (const std::exception& e) {
-            CRANE_ERROR("Read external cert file error: {}", e.what());
-            std::exit(1);
-          }
-        } else {
-          CRANE_ERROR("ExternalCertFilePath is empty");
-          std::exit(1);
-        }
-
-        if (vault_config["ExternalKeyFilePath"]) {
-          external_certs.ServerKeyFilePath =
-              vault_config["ExternalKeyFilePath"].as<std::string>();
-
-          try {
-            external_certs.ServerKeyContent =
-                util::ReadFileIntoString(external_certs.ServerKeyFilePath);
-          } catch (const std::exception& e) {
-            CRANE_ERROR("Read external key file error: {}", e.what());
-            std::exit(1);
-          }
-        } else {
-          CRANE_ERROR("ExternalKeyFilePath is empty");
-          std::exit(1);
-        }
-
-        if (vault_config["ExternalCAFilePath"]) {
-          external_ca_certs.CACertFilePath =
-              vault_config["ExternalCAFilePath"].as<std::string>();
-
-          try {
-            external_ca_certs.CACertContent =
-                util::ReadFileIntoString(external_ca_certs.CACertFilePath);
-          } catch (const std::exception& e) {
-            CRANE_ERROR("Read external ca file error: {}", e.what());
-            std::exit(1);
-          }
-        } else {
-          CRANE_ERROR("ExternalCAFilePath is empty");
-          std::exit(1);
-        }
-      }
-
       if (config["CraneCtldForeground"]) {
         g_config.CraneCtldForeground = config["CraneCtldForeground"].as<bool>();
       }
 
-      if (config["CranedListenPort"])
-        g_config.CranedListenConf.CranedListenPort =
-            config["CranedListenPort"].as<std::string>();
-      else
-        g_config.CranedListenConf.CranedListenPort = kCranedDefaultPort;
+      g_config.CranedListenConf.CranedListenPort =
+          YamlValueOr(config["CranedListenPort"], kCranedDefaultPort);
 
       g_config.PriorityConfig.MaxAge = kPriorityDefaultMaxAge;
       if (config["PriorityMaxAge"]) {
@@ -506,12 +366,14 @@ void ParseConfig(int argc, char** argv) {
         g_config.ScheduledBatchSize = Ctld::kDefaultScheduledBatchSize;
       }
 
-      if (config["RejectJobsBeyondCapacity"]) {
-        g_config.RejectTasksBeyondCapacity =
-            config["RejectJobsBeyondCapacity"].as<bool>();
+      g_config.RejectTasksBeyondCapacity =
+          YamlValueOr<bool>(config["RejectJobsBeyondCapacity"],
+                            Ctld::kDefaultRejectTasksBeyondCapacity);
+
+      if (config["JobFileAppend"]) {
+        g_config.JobFileOpenModeAppend = config["JobFileAppend"].as<bool>();
       } else {
-        g_config.RejectTasksBeyondCapacity =
-            Ctld::kDefaultRejectTasksBeyondCapacity;
+        g_config.JobFileOpenModeAppend = Ctld::kDefaultJobFileOpenModeAppend;
       }
 
       if (config["Nodes"]) {
@@ -664,26 +526,34 @@ void ParseConfig(int argc, char** argv) {
             std::vector<std::string> allowed_accounts =
                 absl::StrSplit(allowed_accounts_str.data(), ",");
             for (const auto& account_name : allowed_accounts) {
-              part.allowed_accounts.insert(absl::StripAsciiWhitespace(account_name).data());
+              part.allowed_accounts.insert(
+                  absl::StripAsciiWhitespace(account_name).data());
             }
           }
 
-          if (partition["DeniedAccounts"] && !partition["DeniedAccounts"].IsNull()) {
-            auto denied_accounts_str = partition["DeniedAccounts"].as<std::string>();
-            std::vector<std::string> denied_accounts = absl::StrSplit(denied_accounts_str, ",");
+          if (partition["DeniedAccounts"] &&
+              !partition["DeniedAccounts"].IsNull()) {
+            auto denied_accounts_str =
+                partition["DeniedAccounts"].as<std::string>();
+            std::vector<std::string> denied_accounts =
+                absl::StrSplit(denied_accounts_str, ",");
             for (const auto& account_name : denied_accounts) {
-              part.denied_accounts.insert(absl::StripAsciiWhitespace(account_name).data());
+              part.denied_accounts.insert(
+                  absl::StripAsciiWhitespace(account_name).data());
             }
 
             if (partition["AllowedAccounts"] &&
-              !partition["AllowedAccounts"].IsNull())
-              CRANE_WARN("Hint: When using AllowedAccounts, DeniedAccounts will not take effect.");
+                !partition["AllowedAccounts"].IsNull())
+              CRANE_WARN(
+                  "Hint: When using AllowedAccounts, DeniedAccounts will not "
+                  "take effect.");
           }
+          constexpr uint32_t B2MB = 1024 * 1024;
 
           if (partition["DefaultMemPerCpu"] &&
               !partition["DefaultMemPerCpu"].IsNull()) {
             part.default_mem_per_cpu =
-                partition["DefaultMemPerCpu"].as<uint64_t>() * 1024 * 1024;
+                partition["DefaultMemPerCpu"].as<uint64_t>() * B2MB;
           }
           if (part.default_mem_per_cpu == 0) {
             uint64_t part_mem = 0;
@@ -698,7 +568,7 @@ void ParseConfig(int argc, char** argv) {
           if (partition["MaxMemPerCpu"] &&
               !partition["MaxMemPerCpu"].IsNull()) {
             part.max_mem_per_cpu =
-                partition["MaxMemPerCpu"].as<uint64_t>() * 1024 * 1024;
+                partition["MaxMemPerCpu"].as<uint64_t>() * B2MB;
           } else
             part.max_mem_per_cpu = 0;
 
@@ -706,9 +576,19 @@ void ParseConfig(int argc, char** argv) {
               part.max_mem_per_cpu < part.default_mem_per_cpu) {
             CRANE_ERROR(
                 "The partition {} MaxMemPerCpu {}MB should not be "
-                "less than DefaultMemPerCpu {}MB",
-                name, part.default_mem_per_cpu, part.max_mem_per_cpu);
+                "less than DefaultMemPerCpu {}MB.",
+                name, part.max_mem_per_cpu / B2MB,
+                part.default_mem_per_cpu / B2MB);
             std::exit(1);
+          }
+          if (part.max_mem_per_cpu == 0) {
+            CRANE_TRACE(
+                "Partition {} MaxMemPerCpu not set, DefaultMemPerCpu {}MB.",
+                name, part.default_mem_per_cpu / B2MB);
+          } else {
+            CRANE_TRACE(
+                "Partition {} MaxMemPerCpu {}MB, DefaultMemPerCpu {}MB.", name,
+                part.max_mem_per_cpu / B2MB, part.default_mem_per_cpu / B2MB);
           }
 
           g_config.Partitions.emplace(std::move(name), std::move(part));
@@ -750,15 +630,10 @@ void ParseConfig(int argc, char** argv) {
         if (plugin_config["Enabled"])
           g_config.Plugin.Enabled = plugin_config["Enabled"].as<bool>();
 
-        if (plugin_config["PlugindSockPath"]) {
-          g_config.Plugin.PlugindSockPath =
-              fmt::format("unix://{}{}", g_config.CraneBaseDir,
-                          plugin_config["PlugindSockPath"].as<std::string>());
-        } else {
-          g_config.Plugin.PlugindSockPath =
-              fmt::format("unix://{}{}", g_config.CraneBaseDir,
-                          kDefaultPlugindUnixSockPath);
-        }
+        g_config.Plugin.PlugindSockPath =
+            fmt::format("unix://{}{}", g_config.CraneBaseDir,
+                        YamlValueOr(plugin_config["PlugindSockPath"],
+                                    kDefaultPlugindUnixSockPath));
       }
     } catch (YAML::BadFile& e) {
       CRANE_CRITICAL("Can't open config file {}: {}", config_path, e.what());
@@ -783,12 +658,12 @@ void ParseConfig(int argc, char** argv) {
       if (config["CraneCtldDbPath"] && !config["CraneCtldDbPath"].IsNull()) {
         std::filesystem::path path(config["CraneCtldDbPath"].as<std::string>());
         if (path.is_absolute())
-          g_config.CraneCtldDbPath = path.string();
+          g_config.CraneCtldDbPath = path;
         else
-          g_config.CraneCtldDbPath = g_config.CraneBaseDir + path.string();
+          g_config.CraneCtldDbPath = g_config.CraneBaseDir / path;
       } else
         g_config.CraneCtldDbPath =
-            g_config.CraneBaseDir + kDefaultCraneCtldDbPath;
+            g_config.CraneBaseDir / kDefaultCraneCtldDbPath;
 
       if (config["DbUser"] && !config["DbUser"].IsNull()) {
         g_config.DbUser = config["DbUser"].as<std::string>();
@@ -817,6 +692,45 @@ void ParseConfig(int argc, char** argv) {
         g_config.DbName = config["DbName"].as<std::string>();
       else
         g_config.DbName = "crane_db";
+
+      if (config["Vault"]) {
+        const auto& vault_config = config["Vault"];
+
+        if (vault_config["Enabled"])
+          g_config.VaultConf.Enabled = vault_config["Enabled"].as<bool>();
+
+        if (vault_config["Addr"])
+          g_config.VaultConf.Addr = vault_config["Addr"].as<std::string>();
+        else
+          g_config.VaultConf.Addr = "127.0.0.1";
+
+        if (vault_config["Port"])
+          g_config.VaultConf.Port = vault_config["Port"].as<std::string>();
+        else
+          g_config.VaultConf.Port = "8200";
+
+        if (vault_config["Username"] && !vault_config["Username"].IsNull())
+          g_config.VaultConf.Username =
+              vault_config["Username"].as<std::string>();
+        else {
+          CRANE_ERROR("Unknown Vault Username");
+          std::exit(1);
+        }
+
+        if (vault_config["Password"] && !vault_config["Password"].IsNull())
+          g_config.VaultConf.Password =
+              vault_config["Password"].as<std::string>();
+        else {
+          CRANE_ERROR("Unknown Vault Password");
+          std::exit(1);
+        }
+
+        if (vault_config["Tls"] && !vault_config["Tls"].IsNull())
+          g_config.VaultConf.Tls = vault_config["Tls"].as<bool>();
+        else
+          g_config.VaultConf.Tls = false;
+      }  // vault
+
     } catch (YAML::BadFile& e) {
       CRANE_CRITICAL("Can't open database config file {}: {}", db_config_path,
                      e.what());
@@ -897,10 +811,10 @@ void InitializeCtldGlobalVariables() {
     g_plugin_client->InitChannelAndStub(g_config.Plugin.PlugindSockPath);
   }
 
-  g_vault_client = std::make_unique<vault::VaultClient>(
-      g_config.VaultConf.Token, g_config.VaultConf.Addr,
-      g_config.VaultConf.Port, g_config.VaultConf.Tls);
-  if (!g_vault_client->InitPki()) std::exit(1);
+  if (g_config.VaultConf.Enabled) {
+    g_vault_client = std::make_unique<Security::VaultClient>();
+    if (!g_vault_client->InitFromConfig(g_config.VaultConf)) std::exit(1);
+  }
 
   // Account manager must be initialized before Task Scheduler
   // since the recovery stage of the task scheduler will acquire
@@ -924,24 +838,21 @@ void InitializeCtldGlobalVariables() {
 
   g_craned_keeper = std::make_unique<CranedKeeper>(g_config.Nodes.size());
 
-  g_craned_keeper->SetCranedIsUpCb([](const CranedId& craned_id) {
-    CRANE_DEBUG(
-        "A new node #{} is up now. Add its resource to the global resource "
-        "pool.",
-        craned_id);
+  g_craned_keeper->SetCranedConnectedCb(
+      [](const CranedId& craned_id, const google::protobuf::Timestamp& token) {
+        CRANE_DEBUG("CranedNode #{} Connected.", craned_id);
+        auto stub = g_craned_keeper->GetCranedStub(craned_id);
+        if (stub == nullptr) {
+          CRANE_ERROR("CranedNode #{} has no stub.", craned_id);
+          return;
+        }
+        stub->ConfigureCraned(craned_id, token);
+      });
 
-    g_thread_pool->detach_task(
-        [craned_id]() { g_meta_container->CranedUp(craned_id); });
-  });
-
-  g_craned_keeper->SetCranedIsDownCb([](const CranedId& craned_id) {
-    CRANE_DEBUG(
-        "CranedNode #{} is down now. "
-        "Remove its resource from the global resource pool.",
-        craned_id);
+  g_craned_keeper->SetCranedDisconnectedCb([](const CranedId& craned_id) {
+    CRANE_DEBUG("CranedNode #{} Disconnected.", craned_id);
+    // No need to worry disconnect before task scheduler init
     g_meta_container->CranedDown(craned_id);
-    g_task_scheduler->TerminateTasksOnCraned(craned_id,
-                                             ExitCode::kExitCodeCranedDown);
   });
 
   std::list<CranedId> to_register_craned_list;
@@ -951,43 +862,12 @@ void InitializeCtldGlobalVariables() {
 
   using namespace std::chrono_literals;
 
-  // TaskScheduler will always recovery pending or running tasks since last
-  // failure, it might be reasonable to wait some time (1s) for all healthy
-  // craned nodes (most of the time all the craned nodes are healthy) to be
-  // online or to wait for the connections to some offline craned nodes to
-  // time out. Otherwise, recovered pending or running tasks may always fail
-  // to be re-queued.
-  size_t to_registered_craneds_cnt = g_config.Nodes.size();
-  // sigmoid function, where x=0 -> y=1.89, x=inf -> y=301
-  // The time space is approximately [2s, 5min].
-  int timeout =
-      (int)(314.0 /
-            (1.0 + std::exp(-0.0001 *
-                            ((double)to_registered_craneds_cnt - 30000.0)))) -
-      13;
-  std::chrono::time_point<std::chrono::system_clock> wait_end_point =
-      std::chrono::system_clock::now() + std::chrono::seconds(timeout);
-
-  g_craned_keeper->InitAndRegisterCraneds(to_register_craned_list);
-  while (true) {
-    auto online_cnt = g_craned_keeper->AvailableCranedCount();
-    if (online_cnt >= to_registered_craneds_cnt) {
-      CRANE_INFO("All craned nodes are up.");
-      break;
-    }
-
-    std::this_thread::sleep_for(
-        std::chrono::microseconds(timeout * 1000 /*ms*/ / 100));
-    if (std::chrono::system_clock::now() > wait_end_point) {
-      CRANE_INFO(
-          "Waiting all craned node to be online timed out. Continuing. "
-          "{} craned is online. Total: {}.",
-          online_cnt, to_registered_craneds_cnt);
-      break;
-    }
-  }
-
   g_task_scheduler = std::make_unique<TaskScheduler>();
+
+  g_ctld_server = std::make_unique<Ctld::CtldServer>(g_config.ListenConf);
+  g_ctld_for_internal_server =
+      std::make_unique<Ctld::CtldForInternalServer>(g_config.ListenConf);
+
   ok = g_task_scheduler->Init();
   if (!ok) {
     CRANE_ERROR("The initialization of TaskScheduler failed. Exiting...");
@@ -995,16 +875,7 @@ void InitializeCtldGlobalVariables() {
     std::exit(1);
   }
 
-  g_ctld_secure_server = std::make_unique<Ctld::CtldSecureServer>();
-
-  g_ctld_plain_server =
-      std::make_unique<Ctld::CtldPlainServer>(g_config.ListenConf);
-
-  g_ctld_for_craned_server =
-      std::make_unique<Ctld::CtldForCranedServer>(g_config.ListenConf);
-
-  g_ctld_for_cfored_server =
-      std::make_unique<Ctld::CtldForCforedServer>(g_config.ListenConf);
+  g_runtime_status.srv_ready.store(true, std::memory_order_release);
 }
 
 void CreateFolders() {
@@ -1025,8 +896,10 @@ void CreateFolders() {
 int StartServer() {
   constexpr uint64_t file_max = 640000;
   if (!util::os::SetMaxFileDescriptorNumber(file_max)) {
-    CRANE_ERROR("Unable to set file descriptor limits to {}", file_max);
-    std::exit(1);
+    CRANE_WARN(
+        "Unable to set file descriptor limits to {}. Please increase the hard "
+        "limit if needed.",
+        file_max);
   }
   util::os::CheckProxyEnvironmentVariable();
 
@@ -1034,13 +907,8 @@ int StartServer() {
 
   InitializeCtldGlobalVariables();
 
-  g_ctld_secure_server->Wait();
-
-  g_ctld_plain_server->Wait();
-
-  g_ctld_for_craned_server->Wait();
-
-  g_ctld_for_cfored_server->Wait();
+  g_ctld_server->Wait();
+  g_ctld_for_internal_server->Wait();
 
   DestroyCtldGlobalVariables();
 

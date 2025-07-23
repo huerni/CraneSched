@@ -1,6 +1,37 @@
 BasedOnStyle: Google
 
+ColumnLimit: 80
+
+AccessModifierOffset: -1
 AllowAllArgumentsOnNextLine: false
+AllowShortBlocksOnASingleLine: Empty
+AlignAfterOpenBracket: Align
+AlignEscapedNewlines: LeftWithLastLine
+AlignArrayOfStructures: None
+AlignOperands: Align
+AlignTrailingComments: true
+AllowShortFunctionsOnASingleLine: All
+AllowShortLambdasOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+
+BinPackArguments: true
+BinPackParameters: BinPack
+
+EmptyLineBeforeAccessModifier: LogicalBlock
+
 IndentPPDirectives: AfterHash
 IndentCaseLabels: false
-AllowShortBlocksOnASingleLine: Empty
+
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+SpacesInAngles: Never
+SpacesInConditionalStatement: false
+SpacesInContainerLiterals: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpaceBeforeSquareBrackets: false
+SpaceBeforeCpp11BracedList: false
+
+Standard: Latest

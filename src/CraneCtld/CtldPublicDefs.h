@@ -24,6 +24,7 @@
 namespace Ctld {
 
 using moodycamel::ConcurrentQueue;
+using RegToken = google::protobuf::Timestamp;
 
 using task_db_id_t = int64_t;
 
@@ -65,6 +66,7 @@ constexpr uint32_t kDefaultScheduledBatchSize = 100000;
 
 constexpr int64_t kCtldRpcTimeoutSeconds = 5;
 constexpr bool kDefaultRejectTasksBeyondCapacity = false;
+constexpr bool kDefaultJobFileOpenModeAppend = false;
 
 struct Config {
   struct Node {
@@ -87,9 +89,7 @@ struct Config {
   struct CraneCtldListenConf {
     std::string CraneCtldListenAddr;
     std::string CraneCtldListenPort;
-    std::string CraneCtldForCranedListenPort;
-    std::string CraneCtldForCforedListenPort;
-    std::string CraneCtldPlainListenPort;
+    std::string CraneCtldForInternalListenPort;
 
     bool UseTls{false};
     struct TlsCertsConfig {
@@ -102,6 +102,7 @@ struct Config {
     TlsCertsConfig TlsCerts;
   };
   CraneCtldListenConf ListenConf;
+  std::string DomainSuffix;
 
   struct CranedListenConf {
     std::string CranedListenPort;
@@ -109,18 +110,14 @@ struct Config {
   CranedListenConf CranedListenConf;
 
   struct VaultConfig {
+    bool Enabled{false};
     std::string Addr;
     std::string Port;
-    std::string Token;
+    std::string Username;
+    std::string Password;
     bool Tls;
-    std::unordered_set<std::string> AllowedNodes;
-
-    ServerCertificateConfig ExternalCerts;
-    CACertificateConfig ExternalCACerts;
   };
-
   VaultConfig VaultConf;
-  std::string DomainSuffix;
 
   struct Priority {
     enum TypeEnum { Basic, MultiFactor };
@@ -143,14 +140,15 @@ struct Config {
 
   bool CompressedRpc{};
 
+  std::string CraneClusterName;
   std::string CraneCtldDebugLevel;
-  std::string CraneCtldLogFile;
+  std::filesystem::path CraneCtldLogFile;
 
   std::string CraneEmbeddedDbBackend;
-  std::string CraneCtldDbPath;
+  std::filesystem::path CraneCtldDbPath;
 
-  std::string CraneBaseDir;
-  std::string CraneCtldMutexFilePath;
+  std::filesystem::path CraneBaseDir;
+  std::filesystem::path CraneCtldMutexFilePath;
 
   bool CraneCtldForeground{};
 
@@ -175,11 +173,18 @@ struct Config {
   uint32_t PendingQueueMaxSize;
   uint32_t ScheduledBatchSize;
   bool RejectTasksBeyondCapacity{false};
+  bool JobFileOpenModeAppend{false};
+};
+
+struct RunTimeStatus {
+  std::atomic_bool srv_ready{false};
 };
 
 }  // namespace Ctld
 
-inline Ctld::Config g_config;
+inline Ctld::Config g_config{};
+
+inline Ctld::RunTimeStatus g_runtime_status{};
 
 namespace Ctld {
 
@@ -203,6 +208,26 @@ struct CranedRemoteMeta {
   std::string craned_version;
   absl::Time craned_start_time;
   absl::Time system_boot_time;
+
+  std::vector<crane::grpc::NetworkInterface> network_interfaces;
+
+  CranedRemoteMeta() = default;
+
+  explicit CranedRemoteMeta(const crane::grpc::CranedRemoteMeta& grpc_meta)
+      : dres_in_node(grpc_meta.dres_in_node()) {
+    this->sys_rel_info.name = grpc_meta.sys_rel_info().name();
+    this->sys_rel_info.release = grpc_meta.sys_rel_info().release();
+    this->sys_rel_info.version = grpc_meta.sys_rel_info().version();
+    this->craned_start_time =
+        absl::FromUnixSeconds(grpc_meta.craned_start_time().seconds());
+    this->system_boot_time =
+        absl::FromUnixSeconds(grpc_meta.system_boot_time().seconds());
+
+    this->network_interfaces.clear();
+    for (const auto& interface : grpc_meta.network_interfaces()) {
+      this->network_interfaces.emplace_back(interface);
+    }
+  }
 };
 
 /**
@@ -214,6 +239,8 @@ struct CranedMeta {
   CranedRemoteMeta remote_meta;
 
   bool alive{false};
+  crane::grpc::CranedPowerState power_state{
+      crane::grpc::CranedPowerState::CRANE_POWER_IDLE};
 
   // total = avail + in-use
   ResourceInNode res_total;  // A copy of res in CranedStaticMeta,
@@ -224,9 +251,53 @@ struct CranedMeta {
   std::string state_reason;
   absl::Time last_busy_time;
 
+  // *********************************************************
+  // TODO: Refactor as Unused LogicalPartition
   // Store the information of the slices of allocated resource.
   // One task id owns one shard of allocated resource.
-  absl::flat_hash_map<task_id_t, ResourceInNode> running_task_resource_map;
+  absl::flat_hash_map<task_id_t, ResourceInNode> rn_task_res_map;
+  // *********************************************************
+
+  // *********************************************************
+  // TODO: Refactor as Reservation LogicalPartition (Might be pointer)
+  struct ResvInNode {
+    absl::Time start_time;
+    absl::Time end_time;
+    ResourceInNode res_total;
+  };
+
+  // Store total resource of each reservation.
+  absl::flat_hash_map<ResvId, ResvInNode> resv_in_node_map;
+  // **********************************************************
+};
+
+struct LogicalPartition {
+  absl::Time start_time;
+  absl::Time end_time;
+
+  ResourceV2 res_total;
+  ResourceV2 res_avail;
+  ResourceV2 res_in_use;
+
+  std::list<CranedId> craned_ids;
+
+  struct RnTaskRes {
+    absl::Time end_time;  // sync with TaskInCtld
+    ResourceV2 resources;
+  };
+
+  absl::flat_hash_map<task_id_t, RnTaskRes> rn_task_res_map;
+};
+
+struct ResvMeta {
+  ResvId name;
+  PartitionId part_id;
+  LogicalPartition logical_part;
+
+  bool accounts_black_list{false};
+  bool users_black_list{false};
+  std::unordered_set<std::string> accounts;
+  std::unordered_set<std::string> users;
 };
 
 struct PartitionGlobalMeta {
@@ -255,12 +326,6 @@ struct PartitionMeta {
 
 struct InteractiveMetaInTask {
   crane::grpc::InteractiveTaskType interactive_type;
-
-  std::string sh_script;
-  std::string term_env;
-
-  bool pty;
-  bool x11;
 
   std::function<void(task_id_t, std::string const&,
                      std::list<std::string> const&)>
@@ -299,8 +364,6 @@ struct InteractiveMetaInTask {
 
 struct BatchMetaInTask {
   std::string sh_script;
-  std::string output_file_pattern;
-  std::string error_file_pattern;
 };
 
 struct TaskInCtld {
@@ -338,6 +401,8 @@ struct TaskInCtld {
 
   std::variant<InteractiveMetaInTask, BatchMetaInTask> meta;
 
+  std::string reservation;
+
  private:
   /* ------------- [2] -------------
    * Fields that won't change after this task is accepted.
@@ -353,8 +418,8 @@ struct TaskInCtld {
    * -------------------------------- */
   int32_t requeue_count{0};
   std::list<CranedId> craned_ids;
-  crane::grpc::TaskStatus status;
-  uint32_t exit_code;
+  crane::grpc::TaskStatus status{};
+  uint32_t exit_code{};
   bool held{false};
 
   // If this task is PENDING, start_time is either not set (default constructed)
@@ -368,7 +433,7 @@ struct TaskInCtld {
   double cached_priority{0.0};
 
   // Might change at each scheduling cycle.
-  ResourceV2 resources;
+  ResourceV2 allocated_res;
 
   /* ------ duplicate of the fields [1] above just for convenience ----- */
   crane::grpc::TaskToCtld task_to_ctld;
@@ -502,19 +567,19 @@ struct TaskInCtld {
   }
   double CachedPriority() const { return cached_priority; }
 
-  void SetResources(ResourceV2&& val) {
-    *runtime_attr.mutable_resources() =
+  void SetAllocatedRes(ResourceV2&& val) {
+    *runtime_attr.mutable_allocated_res() =
         static_cast<crane::grpc::ResourceV2>(val);
-    resources = std::move(val);
+    allocated_res = std::move(val);
   }
-  ResourceV2 const& Resources() const { return resources; }
+  ResourceV2 const& AllocatedRes() const { return allocated_res; }
 
   void SetFieldsByTaskToCtld(crane::grpc::TaskToCtld const& val) {
     task_to_ctld = val;
 
     partition_id = (val.partition_name().empty()) ? g_config.DefaultPartition
                                                   : val.partition_name();
-    requested_node_res_view = static_cast<ResourceView>(val.resources());
+    requested_node_res_view = static_cast<ResourceView>(val.req_resources());
 
     time_limit = absl::Seconds(val.time_limit().seconds());
 
@@ -523,13 +588,10 @@ struct TaskInCtld {
     if (type == crane::grpc::Batch) {
       meta.emplace<BatchMetaInTask>(BatchMetaInTask{
           .sh_script = val.batch_meta().sh_script(),
-          .output_file_pattern = val.batch_meta().output_file_pattern(),
-          .error_file_pattern = val.batch_meta().error_file_pattern(),
       });
     } else {
-      auto& InteractiveMeta = std::get<InteractiveMetaInTask>(meta);
-      InteractiveMeta.interactive_type =
-          val.interactive_meta().interactive_type();
+      auto& ia_meta = std::get<InteractiveMetaInTask>(meta);
+      ia_meta.interactive_type = val.interactive_meta().interactive_type();
     }
 
     node_num = val.node_num();
@@ -556,6 +618,8 @@ struct TaskInCtld {
     get_user_env = val.get_user_env();
 
     extra_attr = val.extra_attr();
+
+    reservation = val.reservation();
   }
 
   void SetFieldsByRuntimeAttr(crane::grpc::RuntimeAttrOfTask const& val) {
@@ -565,7 +629,6 @@ struct TaskInCtld {
     task_db_id = runtime_attr.task_db_id();
     username = runtime_attr.username();
 
-    nodes_alloc = craned_ids.size();
     exit_code = runtime_attr.exit_code();
 
     status = runtime_attr.status();
@@ -591,9 +654,12 @@ struct TaskInCtld {
             executing_craned_ids.emplace_back(craned_id);
       }
 
-      resources = static_cast<ResourceV2>(runtime_attr.resources());
+      allocated_res = static_cast<ResourceV2>(runtime_attr.allocated_res());
+      allocated_res_view.SetToZero();
+      allocated_res_view += allocated_res;
     }
 
+    nodes_alloc = craned_ids.size();
     start_time = absl::FromUnixSeconds(runtime_attr.start_time().seconds());
     end_time = absl::FromUnixSeconds(runtime_attr.end_time().seconds());
     submit_time = absl::FromUnixSeconds(runtime_attr.submit_time().seconds());
@@ -633,7 +699,7 @@ struct TaskInCtld {
     task_info->mutable_execution_node()->Assign(executing_craned_ids.begin(),
                                                 executing_craned_ids.end());
 
-    *task_info->mutable_res_view() =
+    *task_info->mutable_req_res_view() =
         static_cast<crane::grpc::ResourceView>(requested_node_res_view);
 
     task_info->set_exit_code(runtime_attr.exit_code());
@@ -645,6 +711,79 @@ struct TaskInCtld {
     } else {
       task_info->set_craned_list(allocated_craneds_regex);
     }
+    task_info->set_exclusive(task_to_ctld.exclusive());
+
+    *task_info->mutable_allocated_res_view() =
+        static_cast<crane::grpc::ResourceView>(allocated_res_view);
+  }
+
+  crane::grpc::TaskToD GetTaskToD(const CranedId& craned_id) const {
+    crane::grpc::TaskToD task_to_d;
+    // Set time_limit
+    task_to_d.mutable_time_limit()->CopyFrom(
+        google::protobuf::util::TimeUtil::MillisecondsToDuration(
+            ToInt64Milliseconds(this->time_limit)));
+
+    // TODO: remove this field
+    //  Set resources
+    auto* mutable_res_in_node = task_to_d.mutable_resources();
+    *mutable_res_in_node = static_cast<crane::grpc::ResourceInNode>(
+        this->AllocatedRes().at(craned_id));
+
+    // Set type
+    task_to_d.set_type(this->type);
+
+    task_to_d.set_task_id(this->TaskId());
+    task_to_d.set_name(this->name);
+    task_to_d.set_account(this->account);
+    task_to_d.set_qos(this->qos);
+    task_to_d.set_partition(this->partition_id);
+
+    for (auto&& node : this->included_nodes) {
+      task_to_d.mutable_nodelist()->Add()->assign(node);
+    }
+
+    for (auto&& node : this->excluded_nodes) {
+      task_to_d.mutable_excludes()->Add()->assign(node);
+    }
+
+    task_to_d.set_node_num(this->node_num);
+    task_to_d.set_ntasks_per_node(this->ntasks_per_node);
+    task_to_d.set_cpus_per_task(static_cast<double>(this->cpus_per_task));
+
+    task_to_d.set_uid(this->uid);
+    task_to_d.set_gid(this->gid);
+    task_to_d.mutable_env()->insert(this->env.begin(), this->env.end());
+
+    task_to_d.set_cwd(this->cwd);
+    // task_to_d.set_container(this->container);
+    task_to_d.set_get_user_env(this->get_user_env);
+
+    for (const auto& hostname : this->CranedIds())
+      task_to_d.mutable_allocated_nodes()->Add()->assign(hostname);
+
+    task_to_d.mutable_start_time()->set_seconds(this->StartTimeInUnixSecond());
+    task_to_d.mutable_time_limit()->set_seconds(
+        ToInt64Seconds(this->time_limit));
+
+    if (this->type == crane::grpc::Batch) {
+      auto* mutable_meta = task_to_d.mutable_batch_meta();
+      mutable_meta->CopyFrom(this->task_to_ctld.batch_meta());
+    } else {
+      const auto& proto_ia_meta = this->task_to_ctld.interactive_meta();
+      auto* mutable_meta = task_to_d.mutable_interactive_meta();
+      mutable_meta->CopyFrom(proto_ia_meta);
+    }
+    return task_to_d;
+  }
+  crane::grpc::JobToD GetJobToD(const CranedId& craned_id) const {
+    crane::grpc::JobToD spec;
+    spec.set_job_id(task_id);
+    spec.set_uid(uid);
+    *spec.mutable_res() =
+        crane::grpc::ResourceInNode(allocated_res.at(craned_id));
+    spec.set_execution_node(executing_craned_ids.front());
+    return spec;
   }
 };
 

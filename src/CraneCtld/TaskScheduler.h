@@ -55,12 +55,12 @@ class BasicPriority : public IPrioritySorter {
     int i = 0;
     for (auto it = pending_task_map.begin(); i < len; i++, it++) {
       TaskInCtld* task = it->second.get();
-      if (!task->Held()) {
-        task_id_vec.emplace_back(it->first);
-        it->second->pending_reason = "Priority";
-      } else {
+      if (task->Held()) {
         it->second->pending_reason = "Held";
+        continue;
       }
+      it->second->pending_reason = "";
+      task_id_vec.emplace_back(it->first);
     }
 
     return task_id_vec;
@@ -275,25 +275,20 @@ class MinLoadFirst : public INodeSelectionAlgo {
 
   class NodeSelectionInfo {
    public:
-    TimeAvailResMap& InitCostAndGetTimeAvailResMap(
-        const CranedId& craned_id, const ResourceInNode& res_total) {
-      m_cost_node_id_set_.erase({m_node_cost_map_[craned_id], craned_id});
-      m_node_cost_map_[craned_id] = 0;
-      m_cost_node_id_set_.emplace(0, craned_id);
-      m_node_res_total_map_[craned_id] = res_total;
+    void InitCostAndTimeAvailResMap(
+        const CranedId& craned_id, const ResourceInNode& res_total,
+        const ResourceInNode& res_avail, const absl::Time& now,
+        const std::vector<std::pair<absl::Time, const ResourceInNode*>>&
+            running_tasks,
+        const absl::flat_hash_map<ResvId, CranedMeta::ResvInNode>* resv_map);
 
-      return m_node_time_avail_res_map_[craned_id];
-    }
-
-    void UpdateCost(const CranedId& craned_id, absl::Duration duration,
+    void UpdateCost(const CranedId& craned_id, const absl::Time& start_time,
+                    const absl::Time& end_time,
                     const ResourceInNode& resources) {
       uint64_t& cost = m_node_cost_map_.at(craned_id);
       m_cost_node_id_set_.erase({cost, craned_id});
-      ResourceInNode& total_res = m_node_res_total_map_.at(craned_id);
-      double cpu_ratio =
-          static_cast<double>(resources.allocatable_res.cpu_count) /
-          static_cast<double>(total_res.allocatable_res.cpu_count);
-      cost += std::round(duration / absl::Seconds(1) * cpu_ratio);
+      UpdateCostFunc(cost, start_time, end_time, resources,
+                     m_node_res_total_map_.at(craned_id));
       m_cost_node_id_set_.emplace(cost, craned_id);
     }
 
@@ -309,11 +304,34 @@ class MinLoadFirst : public INodeSelectionAlgo {
       return m_cost_node_id_set_;
     }
 
+    // Todo: Move to Reservation Mini-Scheduler.
+    absl::Time GetFirstResvTime(const CranedId& craned_id) {
+      auto iter = m_first_resv_time_map_.find(craned_id);
+      if (iter == m_first_resv_time_map_.end()) return absl::InfiniteFuture();
+      return iter->second;
+    }
+
+    void SetFirstResvTime(const CranedId& craned_id, absl::Time time) {
+      m_first_resv_time_map_[craned_id] = time;
+    }
+
    private:
+    void UpdateCostFunc(uint64_t& cost, const absl::Time& start_time,
+                        const absl::Time& end_time,
+                        const ResourceInNode& resources,
+                        const ResourceInNode& total_res) {
+      double cpu_ratio =
+          static_cast<double>(resources.allocatable_res.cpu_count) /
+          static_cast<double>(total_res.allocatable_res.cpu_count);
+      cost += std::round((end_time - start_time) / absl::Seconds(1) *
+                         cpu_ratio * 256);
+    }
+
     // Craned_ids are sorted by cost.
     std::set<std::pair<uint64_t, CranedId>> m_cost_node_id_set_;
     std::unordered_map<CranedId, uint64_t> m_node_cost_map_;
     std::unordered_map<CranedId, TimeAvailResMap> m_node_time_avail_res_map_;
+    std::unordered_map<CranedId, absl::Time> m_first_resv_time_map_;
 
     // TODO: High copy cost, consider using pointer.
     std::unordered_map<CranedId, ResourceInNode> m_node_res_total_map_;
@@ -338,7 +356,7 @@ class MinLoadFirst : public INodeSelectionAlgo {
             node_selection_info.GetTimeAvailResMap(craned_id);
         m_res_map_iters_.emplace_back(
             craned_id, time_avail_res_map.begin(), time_avail_res_map.end(),
-            &m_satisfied_iters_, &task->Resources().at(craned_id));
+            &m_satisfied_iters_, &task->AllocatedRes().at(craned_id));
         m_time_priority_queue_.emplace(&m_res_map_iters_.back());
       }
     }
@@ -367,10 +385,13 @@ class MinLoadFirst : public INodeSelectionAlgo {
           if (!it->ReachEnd()) m_time_priority_queue_.emplace(it);
         }
 
+        absl::Time kth_time = m_satisfied_iters_.KthTime();
+        if (kth_time == absl::InfiniteFuture()) continue;
+
         if (m_time_priority_queue_.empty() ||
-            m_satisfied_iters_.KthTime() + task->time_limit <=
+            kth_time + task->time_limit <=
                 (*m_time_priority_queue_.top())->first) {
-          *start_time = m_satisfied_iters_.KthTime();
+          *start_time = kth_time;
 
           craned_ids->clear();
           auto it = m_satisfied_iters_.Begin();
@@ -402,6 +423,14 @@ class MinLoadFirst : public INodeSelectionAlgo {
           running_tasks,
       absl::Time now, const PartitionId& partition_id,
       const std::unordered_set<CranedId>& craned_ids,
+      const CranedMetaContainer::CranedMetaRawMap& craned_meta_map,
+      NodeSelectionInfo* node_selection_info);
+
+  // TODO: Move to Reservation Mini-Scheduler.
+  static void CalculateNodeSelectionInfoOfReservation_(
+      const absl::flat_hash_map<uint32_t, std::unique_ptr<TaskInCtld>>&
+          running_tasks,
+      absl::Time now, const ResvMeta* resv_meta,
       const CranedMetaContainer::CranedMetaRawMap& craned_meta_map,
       NodeSelectionInfo* node_selection_info);
 
@@ -445,15 +474,18 @@ class TaskScheduler {
 
   void SetNodeSelectionAlgo(std::unique_ptr<INodeSelectionAlgo> algo);
 
-  CraneExpected<std::future<task_id_t>> SubmitTaskToScheduler(
-      std::unique_ptr<TaskInCtld> task);
-
   /// \return The future is set to 0 if task submission is failed.
   /// Otherwise, it is set to newly allocated task id.
   std::future<task_id_t> SubmitTaskAsync(std::unique_ptr<TaskInCtld> task);
 
   std::future<CraneErrCode> HoldReleaseTaskAsync(task_id_t task_id,
                                                  int64_t secs);
+
+  CraneErrCode ChangeTaskExtraAttrs(task_id_t task_id,
+                                   const std::string& new_extra_attr);
+
+  CraneExpected<std::future<task_id_t>> SubmitTaskToScheduler(
+    std::unique_ptr<TaskInCtld> task);
 
   CraneErrCode ChangeTaskTimeLimit(task_id_t task_id, int64_t secs);
 
@@ -474,9 +506,16 @@ class TaskScheduler {
 
   void TerminateTasksOnCraned(const CranedId& craned_id, uint32_t exit_code);
 
-  // Temporary inconsistency may happen. If 'false' is returned, just ignore it.
+  // Temporary inconsistency may happen. If 'false' is returned, just ignore
+  // it.
   void QueryTasksInRam(const crane::grpc::QueryTasksInfoRequest* request,
                        crane::grpc::QueryTasksInfoReply* response);
+
+  void QueryRnJobOnCtldForNodeConfig(const CranedId& craned_id,
+                                     crane::grpc::ConfigureCranedRequest* req);
+
+  void TerminateOrphanedJobs(const std::set<task_id_t>& jobs,
+                             const CranedId& excluded_node);
 
   crane::grpc::CancelTaskReply CancelPendingOrRunningTask(
       const crane::grpc::CancelTaskRequest& request);
@@ -523,9 +562,24 @@ class TaskScheduler {
     return TerminateRunningTaskNoLock_(iter->second.get());
   }
 
+  static CraneExpected<void> HandleUnsetOptionalInTaskToCtld(TaskInCtld* task);
   static CraneExpected<void> AcquireTaskAttributes(TaskInCtld* task);
-
   static CraneExpected<void> CheckTaskValidity(TaskInCtld* task);
+
+  // TODO: Move to Reservation Mini-Scheduler.
+  crane::grpc::CreateReservationReply CreateResv(
+      const crane::grpc::CreateReservationRequest& request);
+
+  crane::grpc::DeleteReservationReply DeleteResv(
+      const crane::grpc::DeleteReservationRequest& request);
+
+ private:
+  std::expected<void, std::string> CreateResv_(
+      const crane::grpc::CreateReservationRequest& request);
+
+  std::expected<void, std::string> DeleteResvMeta_(
+      CranedMetaContainer::ResvMetaMapPtr& resv_meta_map,
+      const ResvId& resv_id);
 
  private:
   template <class... Ts>
@@ -565,12 +619,12 @@ class TaskScheduler {
 
   HashMap<task_id_t, std::unique_ptr<TaskInCtld>> m_running_task_map_
       ABSL_GUARDED_BY(m_running_task_map_mtx_);
-  Mutex m_running_task_map_mtx_;
+  Mutex m_running_task_map_mtx_ ABSL_ACQUIRED_AFTER(m_pending_task_map_mtx_);
 
   // Task Indexes
   HashMap<CranedId, HashSet<uint32_t /* Task ID*/>> m_node_to_tasks_map_
       ABSL_GUARDED_BY(m_task_indexes_mtx_);
-  Mutex m_task_indexes_mtx_;
+  Mutex m_task_indexes_mtx_ ABSL_ACQUIRED_AFTER(m_running_task_map_mtx_);
 
   std::unique_ptr<IPrioritySorter> m_priority_sorter_;
 
@@ -661,6 +715,19 @@ class TaskScheduler {
 
   std::shared_ptr<uvw::async_handle> m_clean_task_status_change_handle_;
   void CleanTaskStatusChangeQueueCb_();
+
+  // TODO: Move to Reservation Mini-Scheduler.
+  std::thread m_resv_clean_thread_;
+  void CleanResvThread_(const std::shared_ptr<uvw::loop>& uvw_loop);
+
+  std::unordered_map<ResvId, std::shared_ptr<uvw::timer_handle>>
+      m_resv_timer_handles_;
+
+  using ResvTimerQueueElem = std::pair<ResvId, absl::Time>;
+  ConcurrentQueue<ResvTimerQueueElem> m_resv_timer_queue_;
+
+  std::shared_ptr<uvw::async_handle> m_clean_resv_timer_queue_handle_;
+  void CleanResvTimerQueueCb_(const std::shared_ptr<uvw::loop>& uvw_loop);
 };
 
 }  // namespace Ctld

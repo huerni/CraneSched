@@ -33,6 +33,7 @@
 #include <fstream>
 #include <functional>
 #include <future>
+#include <latch>
 #include <list>
 #include <map>
 #include <memory>
@@ -69,6 +70,12 @@
 
 // parallel-hashmap
 #include <parallel_hashmap/phmap.h>
+
+// re2
+#include <re2/re2.h>
+
+// json
+#include <nlohmann/json.hpp>
 
 // Thread pool
 #include <BS_thread_pool.hpp>

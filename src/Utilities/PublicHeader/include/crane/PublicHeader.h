@@ -44,40 +44,45 @@ using CraneExpected = std::expected<T, CraneErrCode>;
 template <typename T>
 using CraneExpectedRich = std::expected<T, CraneRichError>;
 
+inline const char* const kDefaultHost = "0.0.0.0";
+
 inline const char* kCtldDefaultPort = "10011";
 inline const char* kCranedDefaultPort = "10010";
 inline const char* kCforedDefaultPort = "10012";
-inline const char* kCtldForCranedDefaultPort = "10013";
-inline const char* kCtldForCforedDefaultPort = "10014";
-inline const char* kCtldPlainDefaultPort = "10015";
+inline const char* kCtldForInternalDefaultPort = "10013";
 
-inline const char* kDefaultConfigPath = "/etc/crane/config.yaml";
-inline const char* kDefaultDbConfigPath = "/etc/crane/database.yaml";
+inline const char* const kDefaultConfigPath = "/etc/crane/config.yaml";
+inline const char* const kDefaultDbConfigPath = "/etc/crane/database.yaml";
 
-inline const char* kUnlimitedQosName = "UNLIMITED";
-inline const char* kHostFilePath = "/etc/hosts";
+inline const char* const kUnlimitedQosName = "UNLIMITED";
+inline const char* const kHostFilePath = "/etc/hosts";
 
 inline constexpr size_t kDefaultQueryTaskNumLimit = 1000;
 inline constexpr uint32_t kDefaultQosPriority = 1000;
-inline constexpr uint64_t kPriorityDefaultMaxAge = 7 * 24 * 3600;  // 7 days
+inline constexpr uint64_t kPriorityDefaultMaxAge = 7UL * 24 * 3600;  // 7 days
 
-inline const char* kDefaultCraneBaseDir = "/var/crane/";
-inline const char* kDefaultCraneCtldMutexFile = "cranectld/cranectld.lock";
-inline const char* kDefaultCraneCtldLogPath = "cranectld/cranectld.log";
-inline const char* kDefaultCraneCtldDbPath = "cranectld/embedded.db";
+inline const char* const kDefaultCraneBaseDir = "/var/crane/";
+inline const char* const kDefaultCraneCtldMutexFile =
+    "cranectld/cranectld.lock";
+inline const char* const kDefaultCraneCtldLogPath = "cranectld/cranectld.log";
+inline const char* const kDefaultCraneCtldDbPath = "cranectld/embedded.db";
 
-inline const char* kDefaultCranedScriptDir = "craned/scripts";
-inline const char* kDefaultCranedUnixSockPath = "craned/craned.sock";
-inline const char* kDefaultCranedMutexFile = "craned/craned.lock";
-inline const char* kDefaultCranedLogPath = "craned/craned.log";
+inline const char* const kDefaultCranedScriptDir = "craned/scripts";
+inline const char* const kDefaultCranedUnixSockPath = "craned/craned.sock";
+inline const char* const kDefaultCranedForPamUnixSockPath =
+    "craned/craned_pam.sock";
+inline const char* const kDefaultCranedMutexFile = "craned/craned.lock";
+inline const char* const kDefaultCranedLogPath = "craned/craned.log";
 
-inline const char* kDefaultPlugindUnixSockPath = "cplugind/cplugind.sock";
+inline const char* const kDefaultPlugindUnixSockPath = "cplugind/cplugind.sock";
 
 constexpr uint64_t kTaskMinTimeLimitSec = 11;
 constexpr int64_t kTaskMaxTimeLimitSec =
     google::protobuf::util::TimeUtil::kDurationMaxSeconds;
 constexpr int64_t kTaskMaxTimeStampSec =
     google::protobuf::util::TimeUtil::kTimestampMaxSeconds;
+
+constexpr uint64_t kEraseResvIntervalSec = 5;
 
 namespace ExitCode {
 
@@ -97,14 +102,15 @@ enum ExitCodeEnum : uint16_t {
   kExitCodeExceedTimeLimit,
   kExitCodeCranedDown,
   kExitCodeExecutionError,
-
-  __MAX_EXIT_CODE  // NOLINT(bugprone-reserved-identifier)
+  // NOLINTNEXTLINE(bugprone-reserved-identifier,readability-identifier-naming)
+  __MAX_EXIT_CODE
 };
 
 }  // namespace ExitCode
 
 namespace Internal {
-constexpr std::array<std::string_view, uint16_t(crane::grpc::ErrCode_ARRAYSIZE)>
+// clang-format off
+constexpr std::array<std::string_view, crane::grpc::ErrCode_ARRAYSIZE>
     CraneErrStrArr = {
         // 0 - 4
         "Success",
@@ -202,8 +208,8 @@ constexpr std::array<std::string_view, uint16_t(crane::grpc::ErrCode_ARRAYSIZE)>
         "The current running job exceeds the QoS limit (MaxJobPerUser)",
         "User has insufficient privilege"
     };
-
-}
+// clang-format on
+}  // namespace Internal
 
 template <typename... Args>
 inline CraneRichError FormatRichErr(CraneErrCode code, const std::string& fmt,
@@ -218,13 +224,14 @@ inline CraneRichError FormatRichErr(CraneErrCode code, const std::string& fmt,
 }
 
 inline std::string_view CraneErrStr(CraneErrCode err) {
-  return Internal::CraneErrStrArr[uint16_t(err)];
+  return Internal::CraneErrStrArr[static_cast<uint16_t>(err)];
 }
 
 /* ----------- Public definitions for all components */
 
 using PartitionId = std::string;
 using CranedId = std::string;
+using ResvId = std::string;
 using cpu_t = fpm::fixed_24_8;
 
 // TODO: refactor SlotId, it should not be a string of file path.
@@ -475,9 +482,22 @@ ResourceView operator*(const ResourceView& lhs, uint32_t rhs);
 bool operator<=(const ResourceView& lhs, const ResourceInNode& rhs);
 bool operator<=(const ResourceView& lhs, const ResourceView& rhs);
 
-struct CgroupSpec {
+struct JobToD {
+  JobToD() = default;
+  JobToD(const JobToD& spce) = default;
+  explicit JobToD(const crane::grpc::JobToD& job_to_d);
+  JobToD(task_id_t job_id, uid_t uid, const ResourceInNode& res_in_node,
+         const CranedId& execution_node);
+
+  /**
+   * @brief set grpc struct,will move res_in_node field
+   * @param job_to_d grpc job_spce to set
+   */
+  void SetJobToD(crane::grpc::JobToD* job_to_d) const;
+  task_id_t job_id;
   uid_t uid;
-  task_id_t task_id;
   crane::grpc::ResourceInNode res_in_node;
-  std::string execution_node;
+  std::string exec_node;
+  // Recovered on start,no need to apply res limit.
+  bool recovered{false};
 };

@@ -23,7 +23,6 @@
 #include "DbClient.h"
 #include "crane/Lock.h"
 #include "crane/Pointer.h"
-#include "crane/VaultClient.h"
 
 namespace Ctld {
 
@@ -154,9 +153,9 @@ class AccountManager {
   CraneExpected<void> CheckIfUserOfAccountIsEnabled(const std::string& user,
                                                     const std::string& account);
 
-  CraneExpected<void> CheckAndApplyQosLimitOnTask(const std::string& user,
-                                                  const std::string& account,
-                                                  TaskInCtld* task);
+  CraneExpected<void> CheckQosLimitOnTask(const std::string& user,
+                                          const std::string& account,
+                                          TaskInCtld* task);
 
   CraneExpected<std::string> CheckUidIsAdmin(uint32_t uid);
 

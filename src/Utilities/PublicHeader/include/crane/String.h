@@ -20,13 +20,15 @@
 
 #include <absl/strings/ascii.h>
 #include <absl/strings/str_join.h>
-#include <openssl/pem.h>
-#include <openssl/x509.h>
 #include <re2/re2.h>
 #include <spdlog/fmt/fmt.h>
 
-#include <charconv>
+#include <openssl/pem.h>
+#include <openssl/x509.h>
+
 #include <expected>
+
+#include <charconv>
 #include <filesystem>
 #include <fstream>
 #include <list>
@@ -37,6 +39,14 @@
 #include "crane/PublicHeader.h"
 
 namespace util {
+
+template <typename T = std::string, typename YamlNode, typename DefaultType>
+  requires requires(const YamlNode &node) {
+    { node.template as<T>() };
+  } && std::convertible_to<DefaultType, T>
+T YamlValueOr(const YamlNode &node, const DefaultType &default_value) {
+  return node ? node.template as<T>() : default_value;
+}
 
 using CertPair = std::pair<std::string,   // CN
                            std::string>;  // serial number
