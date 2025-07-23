@@ -182,11 +182,13 @@ void ParseConfig(int argc, char** argv) {
         g_config.ListenConf.UseTls = true;
         TlsCertificates& tls_certs = g_config.ListenConf.TlsCerts;
 
-        g_config.ListenConf.DomainSuffix = YamlValueOr(config["DomainSuffix"], "");
+        const auto& ssl_config = config["SSL"];
 
-        if (config["InternalCertFilePath"]) {
+        g_config.ListenConf.DomainSuffix = YamlValueOr(ssl_config["DomainSuffix"], "");
+
+        if (ssl_config["InternalCertFilePath"]) {
           tls_certs.CertFilePath =
-              config["InternalCertFilePath"].as<std::string>();
+              ssl_config["InternalCertFilePath"].as<std::string>();
 
           try {
             tls_certs.CertContent =
@@ -206,9 +208,9 @@ void ParseConfig(int argc, char** argv) {
           std::exit(1);
         }
 
-        if (config["InternalKeyFilePath"]) {
+        if (ssl_config["InternalKeyFilePath"]) {
           tls_certs.KeyFilePath =
-              config["InternalKeyFilePath"].as<std::string>();
+              ssl_config["InternalKeyFilePath"].as<std::string>();
 
           try {
             tls_certs.KeyContent =
@@ -733,15 +735,6 @@ void GlobalVariableInit() {
     CRANE_ERROR("Failed to initialize cpu,memory,IO cgroups controller.");
     std::exit(1);
        }
-
-  g_server = std::make_unique<Craned::CranedServer>(g_config.ListenConf);
-
-  g_job_mgr = std::make_unique<Craned::JobManager>();
-  g_job_mgr->SetSigintCallback([] {
-    g_server->Shutdown();
-    g_craned_for_pam_server->Shutdown();
-    CRANE_INFO("Grpc Server Shutdown() was called.");
-  });
 
   g_server = std::make_unique<Craned::CranedServer>(g_config.ListenConf);
 

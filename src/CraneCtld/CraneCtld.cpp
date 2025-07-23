@@ -131,23 +131,25 @@ void ParseConfig(int argc, char** argv) {
         auto& tls_config = g_config.ListenConf.tls_config;
         g_config.ListenConf.UseTls = true;
 
-        if (config["DomainSuffix"])
-          tls_config.DomainSuffix = config["DomainSuffix"].as<std::string>();
+        const auto& ssl_config = config["SSL"];
 
-        if (config["Nodes"]) {
-          std::string nodes = config["Nodes"].as<std::string>();
-          std::list<std::string> name_list;
-          if (!util::ParseHostList(absl::StripAsciiWhitespace(nodes).data(),
-                                   &name_list)) {
-            CRANE_ERROR("Illegal login node name string format.");
-            std::exit(1);
-                                   }
-          tls_config.AllowedNodes = std::unordered_set<std::string>(
-               std::make_move_iterator(name_list.begin()),  std::make_move_iterator(name_list.end()));
-        }
+        if (ssl_config["DomainSuffix"])
+          tls_config.DomainSuffix = ssl_config["DomainSuffix"].as<std::string>();
 
-        if (config["InternalCertFilePath"]) {
-          tls_config.InternalCerts.CertFilePath = config["InternalCertFilePath"].as<std::string>();
+        // if (config["Nodes"]) {
+        //   std::string nodes = config["Nodes"].as<std::string>();
+        //   std::list<std::string> name_list;
+        //   if (!util::ParseHostList(absl::StripAsciiWhitespace(nodes).data(),
+        //                            &name_list)) {
+        //     CRANE_ERROR("Illegal login node name string format.");
+        //     std::exit(1);
+        //                            }
+        //   tls_config.AllowedNodes = std::unordered_set<std::string>(
+        //        std::make_move_iterator(name_list.begin()),  std::make_move_iterator(name_list.end()));
+        // }
+
+        if (ssl_config["InternalCertFilePath"]) {
+          tls_config.InternalCerts.CertFilePath = ssl_config["InternalCertFilePath"].as<std::string>();
 
           try {
             tls_config.InternalCerts.CertContent = util::ReadFileIntoString(
@@ -166,8 +168,8 @@ void ParseConfig(int argc, char** argv) {
           std::exit(1);
         }
 
-        if (config["InternalKeyFilePath"]) {
-          tls_config.InternalCerts.KeyFilePath = config["InternalKeyFilePath"].as<std::string>();
+        if (ssl_config["InternalKeyFilePath"]) {
+          tls_config.InternalCerts.KeyFilePath = ssl_config["InternalKeyFilePath"].as<std::string>();
 
           try {
             tls_config.InternalCerts.KeyContent = util::ReadFileIntoString(
@@ -186,8 +188,8 @@ void ParseConfig(int argc, char** argv) {
           std::exit(1);
         }
 
-        if (config["InternalCaFilePath"]) {
-          tls_config.InternalCerts.CaFilePath = config["InternalCaFilePath"].as<std::string>();
+        if (ssl_config["InternalCaFilePath"]) {
+          tls_config.InternalCerts.CaFilePath = ssl_config["InternalCaFilePath"].as<std::string>();
 
           try {
             tls_config.InternalCerts.CaContent = util::ReadFileIntoString(
@@ -206,8 +208,8 @@ void ParseConfig(int argc, char** argv) {
           std::exit(1);
         }
 
-        if (config["ExternalCertFilePath"]) {
-          tls_config.ExternalCerts.CertFilePath = config["ExternalCertFilePath"].as<std::string>();
+        if (ssl_config["ExternalCertFilePath"]) {
+          tls_config.ExternalCerts.CertFilePath = ssl_config["ExternalCertFilePath"].as<std::string>();
 
           try {
             tls_config.ExternalCerts.CertContent = util::ReadFileIntoString(
@@ -226,8 +228,8 @@ void ParseConfig(int argc, char** argv) {
           std::exit(1);
         }
 
-        if (config["ExternalKeyFilePath"]) {
-          tls_config.ExternalCerts.KeyFilePath = config["ExternalKeyFilePath"].as<std::string>();
+        if (ssl_config["ExternalKeyFilePath"]) {
+          tls_config.ExternalCerts.KeyFilePath = ssl_config["ExternalKeyFilePath"].as<std::string>();
 
           try {
             tls_config.ExternalCerts.KeyContent = util::ReadFileIntoString(
@@ -246,8 +248,8 @@ void ParseConfig(int argc, char** argv) {
           std::exit(1);
         }
 
-        if (config["ExternalCaFilePath"]) {
-          tls_config.ExternalCerts.CaFilePath = config["ExternalCaFilePath"].as<std::string>();
+        if (ssl_config["ExternalCaFilePath"]) {
+          tls_config.ExternalCerts.CaFilePath = ssl_config["ExternalCaFilePath"].as<std::string>();
 
           try {
             tls_config.ExternalCerts.CaContent = util::ReadFileIntoString(
