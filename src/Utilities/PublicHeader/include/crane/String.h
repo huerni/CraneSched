@@ -96,4 +96,6 @@ std::string ReadableGrpcDresInNode(
 
 std::string GenerateCommaSeparatedString(const int val);
 
+std::expected<CertPair, bool> ParseCertificate(const std::string &cert_pem);
+
 }  // namespace util

@@ -169,6 +169,8 @@ class CraneCtldServiceImpl final : public crane::grpc::CraneCtld::Service {
       crane::grpc::EnableAutoPowerControlReply *response) override;
 
  private:
+  bool CheckCertAndUIDAllowed_(const grpc::ServerContext *context, uint32_t uid);
+
   CtldServer *m_ctld_server_;
 };
 
