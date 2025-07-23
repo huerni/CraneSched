@@ -268,7 +268,7 @@ CraneErrCode CgroupManager::TryToRecoverCgForJobs(
 }
 
 void CgroupManager::ControllersMounted() {
-  using namespace CgroupConstant;
+  using namespace CgConstant;
   if (m_cg_version_ == CgroupVersion::CGROUP_V1) {
     if (!Mounted(Controller::BLOCK_CONTROLLER)) {
       CRANE_WARN("Cgroup controller for I/O statistics is not available.");
