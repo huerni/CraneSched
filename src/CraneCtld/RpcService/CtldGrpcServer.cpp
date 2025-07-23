@@ -252,46 +252,6 @@ grpc::Status CraneCtldServiceImpl::ModifyTask(
   return grpc::Status::OK;
 }
 
-grpc::Status CraneCtldServiceImpl::ModifyTasksExtraAttrs(
-    grpc::ServerContext *context,
-    const crane::grpc::ModifyTasksExtraAttrsRequest *request,
-    crane::grpc::ModifyTasksExtraAttrsReply *response) {
-  if (!g_runtime_status.srv_ready.load(std::memory_order_acquire))
-    return grpc::Status{grpc::StatusCode::UNAVAILABLE,
-                        "CraneCtld Server is not ready"};
-
-  auto res = g_account_manager->CheckUidIsAdmin(request->uid());
-  if (!res) {
-    for (const auto [task_id, _] : request->extra_attrs_list()) {
-      response->add_not_modified_tasks(task_id);
-      if (res.error() == CraneErrCode::ERR_INVALID_USER) {
-        response->add_not_modified_reasons("User is not a user of Crane");
-      } else if (res.error() == CraneErrCode::ERR_USER_NO_PRIVILEGE) {
-        response->add_not_modified_reasons("User has insufficient privilege");
-      }
-    }
-    return grpc::Status::OK;
-  }
-
-  CraneErrCode err;
-  for (const auto [task_id, extra_attrs] : request->extra_attrs_list()) {
-    err = g_task_scheduler->ChangeTaskExtraAttrs(task_id, extra_attrs);
-    if (err == CraneErrCode::SUCCESS) {
-      response->add_modified_tasks(task_id);
-    } else if (err == CraneErrCode::ERR_NON_EXISTENT) {
-      response->add_not_modified_tasks(task_id);
-      response->add_not_modified_reasons(
-          fmt::format("Task #{} was not found in pd/r queue.", task_id));
-    } else {
-      response->add_not_modified_tasks(task_id);
-      response->add_not_modified_reasons(
-          fmt::format("Failed to change extra_attrs: {}.", CraneErrStr(err)));
-    }
-  }
-
-  return grpc::Status::OK;
-}
-
 grpc::Status CraneCtldServiceImpl::ModifyNode(
     grpc::ServerContext *context,
     const crane::grpc::ModifyCranedStateRequest *request,
@@ -1349,9 +1309,9 @@ CtldServer::CtldServer(const Config::CraneCtldListenConf &listen_conf) {
 
   std::string cranectld_listen_addr = listen_conf.CraneCtldListenAddr;
   if (listen_conf.UseTls) {
-    // ServerBuilderAddTcpTlsListeningPort(&builder, cranectld_listen_addr,
-    //                                     listen_conf.CraneCtldListenPort,
-    //                                     listen_conf.Certs);
+    ServerBuilderAddTcpTlsListeningPort(&builder, cranectld_listen_addr,
+                                        listen_conf.CraneCtldListenPort,
+                                        listen_conf.Certs);
   } else {
     ServerBuilderAddTcpInsecureListeningPort(&builder, cranectld_listen_addr,
                                              listen_conf.CraneCtldListenPort);
@@ -1386,9 +1346,9 @@ CtldServer::CtldServer(const Config::CraneCtldListenConf &listen_conf) {
     // condition will occur.
     g_craned_keeper->Shutdown();
 
-    p_server->Shutdown(std::chrono::system_clock::now() +
-                       std::chrono::seconds(1));
-    g_ctld_for_internal_server->Shutdown();
+    auto ddl = std::chrono::seconds(1);
+    p_server->Shutdown(std::chrono::system_clock::now() + ddl);
+    g_internal_server->ShutdownWithin(ddl);
   });
   signal_waiting_thread.detach();
 

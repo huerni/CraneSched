@@ -11,27 +11,11 @@ DbConfigPath: /etc/crane/database.yaml
 CraneBaseDir: /var/crane/
 
 # Tls settings
-UseTls: true
-SSL:
-  CranectldInternalCertFilePath: /etc/crane/tls/internal.pem
-  CranectldInternalKeyFilePath: /etc/crane/tls/internal.key
-  CranedCertFilePath: /etc/crane/tls/craned.pem
-  CranedKeyFilePath: /etc/crane/tls/craned.key
-  CforedCertFilePath: /etc/crane/tls/cfored.pem
-  CforedKeyFilePath: /etc/crane/tls/cfored.key
-  InternalCaFilePath: /etc/crane/tls/internal_ca.pem
-
-Vault:
-  Addr: 127.0.0.1
-  Port: 8200
-  TokenPath: /etc/crane/vault_token.txt  # Token cannot be leaked
-  Tls: false
-#  Nodes: "cn[15-18]"
-  ExternalCertFilePath: /etc/crane/pki/external.pem
-  ExternalKeyFilePath: /etc/crane/pki/external.key
-  ExternalCaFilePath: /etc/crane/pki/external_ca.pem
-
-DomainSuffix: crane.com
+UseTls: false
+ServerCertFilePath: /etc/crane/server.crt
+ServerKeyFilePath: /etc/crane/server.key
+CaCertFilePath: /etc/crane/ca.crt
+DomainSuffix: riley.local
 
 # Ctld settings
 # the listening address of control machine
@@ -141,6 +125,26 @@ RejectJobsBeyondCapacity: false
 # Set the mode for opening output and error files
 # Default value is false.
 JobFileAppend: false
+
+Supervisor:
+  Path: /usr/libexec/csupervisor
+  # Supervisor log level
+  DebugLevel: trace
+  # Relate to CraneBaseDir
+  LogDir: supervisor
+
+Container:
+  # Toggle the container support in CraneSched
+  Enabled: false
+  # Relate to CraneBaseDir
+  TempDir: craned/containers/
+  # OCI Runtime must support `state`, `kill`, `delete`, `run` subcommands
+  # %b, %u, %U, %j, %x will be replaced by bundle_path, user, uid, job_id, job_name
+  RuntimeBin: /usr/bin/runc
+  RuntimeState: /usr/bin/runc --root=/run/user/%U/ state %u.%U.%j.%x
+  RuntimeKill: /usr/bin/runc --rootless=true --root=/run/user/%U/ kill -a %u.%U.%j.%x SIGTERM
+  RuntimeDelete: /usr/bin/runc --rootless=true --root=/run/user/%U/ delete --force %u.%U.%j.%x
+  RuntimeRun: /usr/bin/runc --rootless=true --root=/run/user/%U/ run -b %b %u.%U.%j.%x
 
 Plugin:
   # Toggle the plugin module in CraneSched

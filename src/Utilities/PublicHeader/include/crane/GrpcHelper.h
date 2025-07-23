@@ -22,9 +22,8 @@
 #include <grpc++/grpc++.h>
 #include <spdlog/fmt/bundled/format.h>
 
-#include "crane/Network.h"
-
-struct ServerCertificateConfig {
+struct TlsCertificates {
+  std::string DomainSuffix;
   std::string ServerCertFilePath;
   std::string ServerCertContent;
   std::string ServerKeyFilePath;
@@ -53,16 +52,6 @@ std::chrono::system_clock::time_point ChronoFromProtoTimestamp(
 std::string ProtoTimestampToString(
     const google::protobuf::Timestamp& timestamp);
 
-struct ClientCertificateConfig {
-  std::string ClientCertFilePath;
-  std::string ClientCertContent;
-};
-
-struct CACertificateConfig {
-  std::string CACertFilePath;
-  std::string CACertContent;
-};
-
 void ServerBuilderSetCompression(grpc::ServerBuilder* builder);
 
 void ServerBuilderSetKeepAliveArgs(grpc::ServerBuilder* builder);
@@ -74,22 +63,16 @@ void ServerBuilderAddTcpInsecureListeningPort(grpc::ServerBuilder* builder,
                                               const std::string& address,
                                               const std::string& port);
 
-void ServerBuilderAddmTcpTlsListeningPort(grpc::ServerBuilder* builder,
-                                          const std::string& address,
-                                          const std::string& port,
-                                          const ServerCertificateConfig& certs,
-                                          const std::string& pem_root_cert);
-
 void ServerBuilderAddTcpTlsListeningPort(grpc::ServerBuilder* builder,
                                          const std::string& address,
                                          const std::string& port,
-                                         const ServerCertificateConfig& certs);
+                                         const TlsCertificates& certs);
 
 void SetGrpcClientKeepAliveChannelArgs(grpc::ChannelArguments* args);
 
 void SetTlsHostnameOverride(grpc::ChannelArguments* args,
                             const std::string& hostname,
-                            const std::string& domainSuffix);
+                            const TlsCertificates& certs);
 
 std::shared_ptr<grpc::Channel> CreateUnixInsecureChannel(
     const std::string& socket_addr);
@@ -103,18 +86,12 @@ std::shared_ptr<grpc::Channel> CreateTcpInsecureCustomChannel(
 
 std::shared_ptr<grpc::Channel> CreateTcpTlsCustomChannelByIp(
     const std::string& ip, const std::string& port,
-    const ServerCertificateConfig& certs,
-    const ClientCertificateConfig& clientcerts,
-    const grpc::ChannelArguments& args);
+    const TlsCertificates& certs, const grpc::ChannelArguments& args);
 
 std::shared_ptr<grpc::Channel> CreateTcpTlsChannelByHostname(
     const std::string& hostname, const std::string& port,
-    const ServerCertificateConfig& certs,
-    const ClientCertificateConfig& clientcerts,
-    const std::string& domainSuffix);
+    const TlsCertificates& certs);
 
 std::shared_ptr<grpc::Channel> CreateTcpTlsCustomChannelByHostname(
     const std::string& hostname, const std::string& port,
-    const ServerCertificateConfig& certs,
-    const ClientCertificateConfig& clientcerts, const std::string& domainSuffix,
-    const grpc::ChannelArguments& args);
+    const TlsCertificates& certs, const grpc::ChannelArguments& args);

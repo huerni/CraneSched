@@ -76,11 +76,6 @@ class CraneCtldServiceImpl final : public crane::grpc::CraneCtld::Service {
                           const crane::grpc::ModifyTaskRequest *request,
                           crane::grpc::ModifyTaskReply *response) override;
 
-  grpc::Status ModifyTasksExtraAttrs(
-      grpc::ServerContext *context,
-      const crane::grpc::ModifyTasksExtraAttrsRequest *request,
-      crane::grpc::ModifyTasksExtraAttrsReply *response) override;
-
   grpc::Status ModifyNode(
       grpc::ServerContext *context,
       const crane::grpc::ModifyCranedStateRequest *request,
@@ -188,7 +183,7 @@ class CtldServer {
    */
   explicit CtldServer(const Config::CraneCtldListenConf &listen_conf);
 
-  inline void Wait() { m_server_->Wait(); }
+  void Wait() { m_server_->Wait(); }
 
  private:
   std::unique_ptr<CraneCtldServiceImpl> m_service_impl_;

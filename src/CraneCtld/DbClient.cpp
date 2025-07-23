@@ -301,7 +301,7 @@ bool MongodbClient::FetchJobRecords(
   // 20 script        state          timelimit     time_submit work_dir
   // 25 submit_line   exit_code      username       qos        get_user_env
   // 30 type          extra_attr     reservation    exclusive  cpus_alloc
-  // 35 mem_alloc     device_map
+  // 35 mem_alloc     device_map     container
 
   try {
     for (auto view : cursor) {
@@ -370,6 +370,7 @@ bool MongodbClient::FetchJobRecords(
         task->set_reservation(view["reservation"].get_string().value.data());
       }
       task->set_exclusive(view["exclusive"].get_bool().value);
+      task->set_container(view["container"].get_string().value);
     }
   } catch (const bsoncxx::exception& e) {
     PrintError_(e.what());
@@ -671,7 +672,6 @@ void MongodbClient::ViewToUser_(const bsoncxx::document::view& user_view,
     user->deleted = user_view["deleted"].get_bool();
     user->uid = user_view["uid"].get_int64().value;
     user->name = user_view["name"].get_string().value;
-    user->serial_number = user_view["serial_number"].get_string().value;
     user->default_account = user_view["default_account"].get_string().value;
     user->admin_level =
         (Ctld::User::AdminLevel)user_view["admin_level"].get_int32().value;
@@ -709,24 +709,22 @@ void MongodbClient::ViewToUser_(const bsoncxx::document::view& user_view,
 
 bsoncxx::builder::basic::document MongodbClient::UserToDocument_(
     const Ctld::User& user) {
-  std::array<std::string, 8> fields{"deleted",
+  std::array<std::string, 7> fields{"deleted",
                                     "uid",
                                     "default_account",
                                     "name",
                                     "admin_level",
                                     "account_to_attrs_map",
-                                    "coordinator_accounts",
-                                    "serial_number"};
+                                    "coordinator_accounts"};
   std::tuple<bool, int64_t, std::string, std::string, int32_t,
-             User::AccountToAttrsMap, std::list<std::string>, std::string>
+             User::AccountToAttrsMap, std::list<std::string>>
       values{user.deleted,
              user.uid,
              user.default_account,
              user.name,
              user.admin_level,
              user.account_to_attrs_map,
-             user.coordinator_accounts,
-             user.serial_number};
+             user.coordinator_accounts};
   return DocumentConstructor_(fields, values);
 }
 
@@ -838,14 +836,7 @@ std::unordered_map<std::string, uint64_t> MongodbClient::ParseTypeMap(
 
   for (const auto& element : type_map_view) {
     const std::string type_name = std::string(element.key());
-    uint64_t type_total = 0;
-    if (element.type() == bsoncxx::type::k_int64) {
-      type_total = element.get_int64().value;
-    } else if (element.type() == bsoncxx::type::k_int32) {
-      type_total = element.get_int32().value;
-    } else {
-      PrintError_("type_map value: BSON type is not a number.");
-    }
+    uint64_t type_total = element.get_int64().value;
     type_map[type_name] = type_total;
   }
 
@@ -866,15 +857,8 @@ DeviceMap MongodbClient::JsonStringToDeviceMap(
       const std::string device_name = std::string(device_entry.key());
       bsoncxx::document::view device_doc = device_entry.get_document().view();
 
-      auto untyped_elem = device_doc["untyped_req_count"];
-      uint64_t untyped_req_count = 0;
-      if (untyped_elem.type() == bsoncxx::type::k_int64) {
-        untyped_req_count = untyped_elem.get_int64().value;
-      } else if (untyped_elem.type() == bsoncxx::type::k_int32) {
-        untyped_req_count = untyped_elem.get_int32().value;
-      } else {
-        PrintError_("untyped_req_count: BSON type is not a number.");
-      }
+      uint64_t untyped_req_count =
+          device_doc["untyped_req_count"].get_int64().value;
 
       bsoncxx::document::view type_map_view =
           device_doc["type_map"].get_document().view();
@@ -942,10 +926,10 @@ MongodbClient::document MongodbClient::TaskInEmbeddedDbToDocument_(
   // 20 script        state          timelimit     time_submit work_dir
   // 25 submit_line   exit_code      username       qos        get_user_env
   // 30 type          extra_attr     reservation   exclusive   cpus_alloc
-  // 35 mem_alloc      device_map
+  // 35 mem_alloc     device_map     container
 
   // clang-format off
-  std::array<std::string, 37> fields{
+  std::array<std::string, 38> fields{
     // 0 - 4
     "task_id",  "task_db_id", "mod_time",    "deleted",  "account",
     // 5 - 9
@@ -961,7 +945,7 @@ MongodbClient::document MongodbClient::TaskInEmbeddedDbToDocument_(
     // 30 - 34
     "type", "extra_attr", "reservation", "exclusive", "cpus_alloc",
     // 35 - 39
-    "mem_alloc", "device_map"
+    "mem_alloc", "device_map", "container",
   };
   // clang-format on
 
@@ -972,7 +956,7 @@ MongodbClient::document MongodbClient::TaskInEmbeddedDbToDocument_(
              std::string, int32_t, int64_t, int64_t, std::string,  /*20-24*/
              std::string, int32_t, std::string, std::string, bool, /*25-29*/
              int32_t, std::string, std::string, bool, double,      /*30-34*/
-             int64_t, std::string>                                 /*35-39*/
+             int64_t, std::string, std::string>                    /*35-39*/
       values{                                                      // 0-4
              static_cast<int32_t>(runtime_attr.task_id()),
              runtime_attr.task_db_id(), absl::ToUnixSeconds(absl::Now()), false,
@@ -1006,7 +990,7 @@ MongodbClient::document MongodbClient::TaskInEmbeddedDbToDocument_(
              allocated_res_view.CpuCount(),
              // 35-39
              static_cast<int64_t>(allocated_res_view.MemoryBytes()),
-             device_map_str};
+             device_map_str, task_to_ctld.container()};
 
   return DocumentConstructor_(fields, values);
 }
@@ -1032,10 +1016,10 @@ MongodbClient::document MongodbClient::TaskInCtldToDocument_(TaskInCtld* task) {
   // 20 script        state          timelimit     time_submit work_dir
   // 25 submit_line   exit_code      username       qos        get_user_env
   // 30 type          extra_attr     reservation    exclusive  cpus_alloc
-  // 35 mem_alloc     device_map
+  // 35 mem_alloc     device_map     container
 
   // clang-format off
-  std::array<std::string, 37> fields{
+  std::array<std::string, 38> fields{
       // 0 - 4
       "task_id",  "task_db_id", "mod_time",    "deleted",  "account",
       // 5 - 9
@@ -1051,7 +1035,7 @@ MongodbClient::document MongodbClient::TaskInCtldToDocument_(TaskInCtld* task) {
       // 30 - 34
       "type", "extra_attr", "reservation", "exclusive", "cpus_alloc",
       // 35 - 39
-      "mem_alloc", "device_map"
+      "mem_alloc", "device_map", "container",
   };
   // clang-format on
 
@@ -1062,7 +1046,7 @@ MongodbClient::document MongodbClient::TaskInCtldToDocument_(TaskInCtld* task) {
              std::string, int32_t, int64_t, int64_t, std::string,  /*20-24*/
              std::string, int32_t, std::string, std::string, bool, /*25-29*/
              int32_t, std::string, std::string, bool, double,      /*30-34*/
-             int64_t, std::string>                                 /*35-39*/
+             int64_t, std::string, std::string>                    /*35-39*/
       values{                                                      // 0-4
              static_cast<int32_t>(task->TaskId()), task->TaskDbId(),
              absl::ToUnixSeconds(absl::Now()), false, task->account,
@@ -1088,7 +1072,7 @@ MongodbClient::document MongodbClient::TaskInCtldToDocument_(TaskInCtld* task) {
              task->allocated_res_view.CpuCount(),
              // 35-39
              static_cast<int64_t>(task->allocated_res_view.MemoryBytes()),
-             device_map_str};
+             device_map_str, task->container};
   return DocumentConstructor_(fields, values);
 }
 

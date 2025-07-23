@@ -481,22 +481,19 @@ class TaskScheduler {
   std::future<CraneErrCode> HoldReleaseTaskAsync(task_id_t task_id,
                                                  int64_t secs);
 
-  CraneErrCode ChangeTaskExtraAttrs(task_id_t task_id,
-                                   const std::string& new_extra_attr);
-
-  CraneExpected<std::future<task_id_t>> SubmitTaskToScheduler(
-    std::unique_ptr<TaskInCtld> task);
-
   CraneErrCode ChangeTaskTimeLimit(task_id_t task_id, int64_t secs);
 
   CraneErrCode ChangeTaskPriority(task_id_t task_id, double priority);
 
-  void TaskStatusChangeWithReasonAsync(uint32_t task_id,
+  CraneExpected<std::future<task_id_t>> SubmitTaskToScheduler(
+      std::unique_ptr<TaskInCtld> task);
+
+  void StepStatusChangeWithReasonAsync(uint32_t task_id,
                                        const CranedId& craned_index,
                                        crane::grpc::TaskStatus new_status,
                                        uint32_t exit_code,
                                        std::optional<std::string>&& reason) {
-    // Todo: Add reason implementation here!
+    // TODO: Add reason implementation here!
     TaskStatusChangeAsync(task_id, craned_index, new_status, exit_code);
   }
 

@@ -1,6 +1,6 @@
-
 add_executable(cranectld
         CtldPublicDefs.h
+        CtldPublicDefs.cpp
         DbClient.h
         DbClient.cpp
         TaskScheduler.h
@@ -40,6 +40,7 @@ target_link_libraries(cranectld PRIVATE
 
         Utility_PublicHeader
         Utility_PluginClient
+
         uvw
 
         cxxopts

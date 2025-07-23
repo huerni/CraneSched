@@ -405,6 +405,12 @@ install(TARGETS craned
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_WRITE GROUP_EXECUTE WORLD_READ WORLD_WRITE WORLD_EXECUTE
 )
 
+install(TARGETS csupervisor
+        DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}
+        COMPONENT cranedc
+        PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_WRITE GROUP_EXECUTE WORLD_READ WORLD_WRITE WORLD_EXECUTE
+)
+
 if (CRANE_ENABLE_BPF)
     install(FILES
             ${CMAKE_BINARY_DIR}/src/Misc/BPF/cgroup_dev_bpf.o
@@ -477,7 +483,7 @@ set(CPACK_DEBIAN_COMPRESSION_TYPE "xz")
 set(CPACK_DEBIAN_DEBUGINFO_PACKAGE ON)
 
 # Create post-installation script for creating crane user and directory
-file(WRITE ${CMAKE_BINARY_DIR}/post_install.sh 
+file(WRITE ${CMAKE_BINARY_DIR}/post_install.sh
 "#!/bin/bash
 # Create crane user if it doesn't exist
 if ! id -u crane &>/dev/null; then
@@ -517,7 +523,7 @@ exit 0
 ")
 
 # Set execute permissions on the post-install script
-file(CHMOD ${CMAKE_BINARY_DIR}/post_install.sh 
+file(CHMOD ${CMAKE_BINARY_DIR}/post_install.sh
      PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE "${CMAKE_BINARY_DIR}/post_install.sh")
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_BINARY_DIR}/post_install.sh;")
