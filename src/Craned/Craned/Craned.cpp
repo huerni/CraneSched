@@ -229,6 +229,27 @@ void ParseConfig(int argc, char** argv) {
           std::exit(1);
         }
 
+        if (ssl_config["InternalCaFilePath"]) {
+          tls_certs.CaFilePath =
+              ssl_config["InternalCaFilePath"].as<std::string>();
+
+          try {
+            tls_certs.CaContent =
+                util::ReadFileIntoString(tls_certs.CaFilePath);
+          } catch (const std::exception& e) {
+            CRANE_ERROR("Read cert file error: {}", e.what());
+            std::exit(1);
+          }
+          if (tls_certs.CaContent.empty()) {
+            CRANE_ERROR(
+                "UseTls is true, but the file specified by InternalKeyFilePath "
+                "is empty");
+          }
+        } else {
+          CRANE_ERROR("UseTls is true, but InternalKeyFilePath is empty");
+          std::exit(1);
+        }
+
       } else {
         g_config.ListenConf.UseTls = false;
       }
