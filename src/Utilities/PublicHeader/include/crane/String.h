@@ -23,6 +23,10 @@
 #include <re2/re2.h>
 #include <spdlog/fmt/fmt.h>
 
+#include <openssl/pem.h>
+#include <openssl/x509.h>
+
+#include <expected>
 #include <charconv>
 #include <filesystem>
 #include <fstream>
@@ -33,6 +37,9 @@
 #include "crane/PublicHeader.h"
 
 namespace util {
+
+using CertPair = std::pair<std::string,   // CN
+                           std::string>;  // serial number
 
 template <typename T = std::string, typename YamlNode, typename DefaultType>
   requires requires(const YamlNode &node) {
