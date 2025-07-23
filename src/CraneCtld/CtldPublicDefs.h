@@ -92,7 +92,13 @@ struct Config {
     std::string CraneCtldForInternalListenPort;
 
     bool UseTls{false};
-    TlsCertificates Certs;
+    struct TlsCertsConfig {
+      TlsCertificates InternalCerts;
+      TlsCertificates ExternalCerts;
+      std::unordered_set<std::string> AllowedNodes;
+      std::string DomainSuffix;
+    };
+    TlsCertsConfig tls_config;
   };
   CraneCtldListenConf ListenConf;
 

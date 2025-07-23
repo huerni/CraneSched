@@ -23,11 +23,12 @@
 #include <spdlog/fmt/bundled/format.h>
 
 struct TlsCertificates {
-  std::string DomainSuffix;
-  std::string ServerCertFilePath;
-  std::string ServerCertContent;
-  std::string ServerKeyFilePath;
-  std::string ServerKeyContent;
+  std::string CertFilePath;
+  std::string CertContent;
+  std::string KeyFilePath;
+  std::string KeyContent;
+  std::string CaFilePath;
+  std::string CaContent;
 };
 
 std::string_view GrpcConnStateStr(grpc_connectivity_state state);
