@@ -35,7 +35,6 @@
 #include "RpcService/CranedKeeper.h"
 #include "RpcService/CtldForInternalServer.h"
 #include "RpcService/CtldGrpcServer.h"
-#include "RpcService/CtldPlainServer.h"
 #include "Security/VaultClient.h"
 #include "TaskScheduler.h"
 #include "crane/Network.h"
@@ -124,9 +123,6 @@ void ParseConfig(int argc, char** argv) {
       g_config.ListenConf.CraneCtldForInternalListenPort =
           YamlValueOr(config["CraneCtldForInternalListenPort"],
                       kCtldForInternalDefaultPort);
-      g_config.ListenConf.CraneCtldPlainListenPort =
-        YamlValueOr(config["CraneCtldPlainListenPort"],
-                    kCtldPlainDefaultPort);
 
       if (config["CompressedRpc"])
         g_config.CompressedRpc = config["CompressedRpc"].as<bool>();
@@ -882,8 +878,6 @@ void InitializeCtldGlobalVariables() {
   g_ctld_server = std::make_unique<Ctld::CtldServer>(g_config.ListenConf);
   g_internal_server =
       std::make_unique<Ctld::CtldForInternalServer>(g_config.ListenConf);
-  g_ctld_plain_server =
-     std::make_unique<Ctld::CtldPlainServer>(g_config.ListenConf);
 
   ok = g_task_scheduler->Init();
   if (!ok) {
@@ -926,7 +920,6 @@ int StartServer() {
 
   g_ctld_server->Wait();
   g_internal_server->Wait();
-  g_ctld_plain_server->Wait();
 
   DestroyCtldGlobalVariables();
 

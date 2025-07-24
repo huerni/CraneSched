@@ -106,7 +106,7 @@ void ServerBuilderAddTcpTlsListeningPort(grpc::ServerBuilder* builder,
   ssl_opts.pem_root_certs = certs.CaContent;
   ssl_opts.pem_key_cert_pairs.emplace_back(std::move(pem_key_cert_pair));
   ssl_opts.client_certificate_request =
-      GRPC_SSL_REQUEST_AND_REQUIRE_CLIENT_CERTIFICATE_AND_VERIFY;
+      GRPC_SSL_REQUEST_CLIENT_CERTIFICATE_AND_VERIFY;
 
   builder->AddListeningPort(listen_addr_port, grpc::SslServerCredentials(ssl_opts));
 }
