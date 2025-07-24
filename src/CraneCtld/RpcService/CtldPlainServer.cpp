@@ -183,7 +183,7 @@ CtldPlainServer::CtldPlainServer(
     CRANE_ERROR("Cannot start gRPC server!");
     std::exit(1);
   }
-  CRANE_INFO("CraneCtld For Ctld Plain Server is listening on {}:{}",
+  CRANE_INFO("CraneCtldForPlain Server is listening on {}:{}",
              listen_conf.CraneCtldListenAddr,
              listen_conf.CraneCtldPlainListenPort);
 }
