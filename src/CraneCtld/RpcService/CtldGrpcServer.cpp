@@ -1139,6 +1139,13 @@ grpc::Status CraneCtldServiceImpl::BlockAccountOrUser(
   return grpc::Status::OK;
 }
 
+grpc::Status CraneCtldServiceImpl::ResetUserCredential(
+    grpc::ServerContext *context,
+    const crane::grpc::ResetUserCredentialRequest *request,
+    crane::grpc::ResetUserCredentialReply *response) {
+  return Service::ResetUserCredential(context, request, response);
+}
+
 grpc::Status CraneCtldServiceImpl::QueryClusterInfo(
     grpc::ServerContext *context,
     const crane::grpc::QueryClusterInfoRequest *request,
