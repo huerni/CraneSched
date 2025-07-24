@@ -1193,7 +1193,33 @@ grpc::Status CraneCtldServiceImpl::ResetUserCredential(
   if (auto msg = CheckCertAndUIDAllowed_(context, request->uid()); msg)
     return {grpc::StatusCode::UNAUTHENTICATED, msg.value()};
 
-  return Service::ResetUserCredential(context, request, response);
+
+  std::unordered_set<std::string> user_list{request->user_list().begin(),
+                                            request->user_list().end()};
+
+  if (request->user_list().empty()) {
+    const auto user_map_ptr = g_account_manager->GetAllUserInfo();
+    for (const auto &username : *user_map_ptr | std::views::keys) {
+      user_list.insert(username);
+    }
+  }
+
+  for (const auto &username : user_list) {
+    auto result = g_account_manager->ResetUserCertificate(request->uid(), username);
+    if (!result) {
+      auto *new_err_record = response->mutable_rich_error_list()->Add();
+      new_err_record->set_description(username);
+      new_err_record->set_code(result.error());
+    }
+  }
+
+  if (!response->rich_error_list().empty()) {
+    response->set_ok(false);
+  } else {
+    response->set_ok(true);
+  }
+
+  return grpc::Status::OK;
 }
 
 grpc::Status CraneCtldServiceImpl::QueryClusterInfo(

@@ -1222,7 +1222,7 @@ CraneExpected<std::string> AccountManager::SignUserCertificate(
 
   m_user_map_[op_user->name]->serial_number = sign_response->serial_number;
 
-  CRANE_DEBUG("The user {} successfully signed the certificate.",
+  CRANE_INFO("The user {} successfully signed the certificate.",
               op_user->name);
 
   return sign_response->certificate;
