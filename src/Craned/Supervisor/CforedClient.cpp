@@ -506,6 +506,7 @@ void CforedClient::AsyncSendRecvThread_() {
     End,
   };
 
+  // TODO：重新创建stream连接
   std::thread output_clean_thread;
   std::atomic<bool> write_pending;
 
