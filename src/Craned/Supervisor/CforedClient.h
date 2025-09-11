@@ -123,6 +123,7 @@ class CforedClient {
   std::atomic<bool> m_wait_reconn_{false};
   std::atomic<bool> m_output_drained_{false};
 
+  std::atomic<size_t> m_output_queue_bytes_{0};
   struct IOFwdRequest {
     std::unique_ptr<char[]> data;
     size_t len;
