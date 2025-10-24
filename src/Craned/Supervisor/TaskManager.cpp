@@ -98,6 +98,20 @@ EnvMap StepInstance::GetStepProcessEnv() const {
   env_map.emplace("CRANE_PARTITION", m_step_to_supv_.partition());
   env_map.emplace("CRANE_QOS", m_step_to_supv_.qos());
 
+  auto node_iter = std::ranges::find(m_step_to_supv_.allocated_nodes(), g_config.CranedIdOfThisNode);
+  int node_id = std::distance(m_step_to_supv_.allocated_nodes().begin(), node_iter);
+  env_map.emplace("SLURM_JOBID", std::to_string(m_step_to_supv_.task_id()));
+  env_map.emplace("SLURM_NODEID", std::to_string(node_id));
+  env_map.emplace("SLURMD_NODENAME", g_config.CranedIdOfThisNode);
+  env_map.emplace("SLURM_STEP_NUM_TASKS", std::to_string(m_step_to_supv_.ntasks_per_node()));
+  env_map.emplace("SLURM_PROCID", "0");
+  env_map.emplace("SLURM_GTIDS", std::to_string(node_id * m_step_to_supv_.ntasks_per_node()));
+  env_map.emplace("SLURM_LOCALID", "0");
+  env_map.emplace("SLURM_WORKING_DIR", g_config.CraneBaseDir);
+  env_map.emplace("SLURM_CPU_BIND_TYPE", "none");
+  env_map.emplace("SLURM_NODELIST", util::HostNameListToStr(m_step_to_supv_.allocated_nodes()));
+
+
   int64_t time_limit_sec = m_step_to_supv_.time_limit().seconds();
   int64_t hours = time_limit_sec / 3600;
   int64_t minutes = (time_limit_sec % 3600) / 60;
