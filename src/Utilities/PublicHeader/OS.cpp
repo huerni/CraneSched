@@ -567,6 +567,9 @@ std::expected<std::string, RunPrologEpilogStatus> RunPrologOrEpiLog(
       close(stdout_pipe[1]);
       close(stderr_pipe[1]);
 
+      long maxfd = sysconf(_SC_OPEN_MAX);
+      for (int fd = 3; fd < maxfd; ++fd) close(fd);
+
       if (args.at_child_setup_cb) {
         bool result = args.at_child_setup_cb(pid);
         if (!result) {
