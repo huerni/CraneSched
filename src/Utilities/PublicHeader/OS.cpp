@@ -494,10 +494,6 @@ std::expected<std::string, RunPrologEpilogStatus> RunPrologOrEpiLog(
     if (pid > 0) {
       close(stdout_pipe[1]);
       close(stderr_pipe[1]);
-      absl::Cleanup close_pipes = [&]() {
-        close(stdout_pipe[0]);
-        close(stderr_pipe[0]);
-      };
       int status = 0;
       auto fut = std::async(std::launch::async, [pid, &status]() {
         return waitpid(pid, &status, 0);
@@ -518,11 +514,11 @@ std::expected<std::string, RunPrologEpilogStatus> RunPrologOrEpiLog(
         if (fut.get() == pid) child_exited = true;
       }
 
-      if (!child_exited) {
-        kill(pid, SIGKILL);
-        waitpid(pid, &status, 0);
-        CRANE_TRACE("{} Timeout.", script);
-      }
+      // if (!child_exited) {
+      //   kill(pid, SIGKILL);
+      //   waitpid(pid, &status, 0);
+      //   CRANE_TRACE("{} Timeout.", script);
+      // }
 
       int exit_code = 0;
       int signal_num = 0;
@@ -552,8 +548,13 @@ std::expected<std::string, RunPrologEpilogStatus> RunPrologOrEpiLog(
 
       auto err_str = read_stream(stderr_pipe[0], args.output_size);
 
+      close(stdout_pipe[0]);
+      close(stderr_pipe[0]);
+
       if (exit_code != 0) {
-        CRANE_TRACE("{} Failed (exit status {}:{}), err: {}.", script,
+        // CRANE_TRACE("{} Failed (exit status {}:{}), err: {}.", script,
+        //             exit_code, signal_num, "err_str");
+        fmt::print(stderr, "{} Failed (exit status {}:{}), err: {}.", script,
                     exit_code, signal_num, err_str);
         return std::unexpected(RunPrologEpilogStatus{.exit_code = exit_code,
                                                      .signal_num = signal_num});
@@ -567,8 +568,7 @@ std::expected<std::string, RunPrologEpilogStatus> RunPrologOrEpiLog(
       close(stdout_pipe[1]);
       close(stderr_pipe[1]);
 
-      long maxfd = sysconf(_SC_OPEN_MAX);
-      for (int fd = 3; fd < maxfd; ++fd) close(fd);
+      CloseFdFrom(3);
 
       if (args.at_child_setup_cb) {
         bool result = args.at_child_setup_cb(pid);
