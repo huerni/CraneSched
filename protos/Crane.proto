@@ -1280,7 +1280,7 @@ service Craned {
   rpc AllocSteps(AllocStepsRequest) returns (AllocStepsReply);
   rpc FreeSteps(FreeStepsRequest) returns (FreeStepsReply);
   rpc FreeJobs(FreeJobsRequest) returns (FreeJobsReply);
-      rpc ReceivePmixPort(ReceivePmixPortRequest) returns (ReceivePmixPortReply);
+  rpc ReceivePmixPort(ReceivePmixPortRequest) returns (ReceivePmixPortReply);
   /*
   If the task is an interactive task, the resource uuid is also revoked.
    If there's no process in this interactive task, just deallocate all the resources.
