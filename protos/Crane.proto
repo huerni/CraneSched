@@ -390,8 +390,8 @@ message DeleteWckeyReply {
 }
 
 message ModifyFieldOperation {
-  ModifyField modify_field = 1;    // modify item field
-  repeated string value_list = 2;  // new value
+  ModifyField modify_field = 1; // modify item field
+  repeated string value_list = 2; // new value
   OperationType type = 3;
 }
 
@@ -581,15 +581,15 @@ message QueryTasksInfoReply {
 
 message QueryTaskEfficiencyRequest {
   repeated uint32 task_ids = 1;
-  uint32 uid = 2;  // User ID for authorization
+  uint32 uid = 2; // User ID for authorization
 }
 
 message TaskEfficiencyInfo {
   uint32 task_id = 1;
   string hostname = 2;
-  uint64 cpu_usage = 3;     // CPU usage in nanoseconds
-  uint64 memory_usage = 4;  // Memory usage in bytes
-  uint64 proc_count = 5;    // Process count
+  uint64 cpu_usage = 3; // CPU usage in nanoseconds
+  uint64 memory_usage = 4; // Memory usage in bytes
+  uint64 proc_count = 5; // Process count
   google.protobuf.Timestamp timestamp = 6;
 }
 
@@ -600,16 +600,16 @@ message QueryTaskEfficiencyReply {
 }
 
 message QueryNodeEventsRequest {
-  repeated string node_names = 1;  // Node names to query, empty means all nodes
-  uint32 uid = 2;                  // User ID for authorization
+  repeated string node_names = 1; // Node names to query, empty means all nodes
+  uint32 uid = 2; // User ID for authorization
 }
 
 message NodeEventInfo {
   string cluster_name = 1;
   string node_name = 2;
   uint64 uid = 3;
-  int64 start_time = 4;  // Unix timestamp in nanoseconds
-  int64 end_time = 5;    // Unix timestamp in nanoseconds
+  int64 start_time = 4; // Unix timestamp in nanoseconds
+  int64 end_time = 5; // Unix timestamp in nanoseconds
   string state = 6;
   string reason = 7;
 }
@@ -1009,7 +1009,7 @@ message EnableAutoPowerControlReply {
 message SignUserCertificateRequest {
   uint32 uid = 1;
   string csr_content = 2;
-  string alt_names = 3;  // "localhost, *.domainSuffix"
+  string alt_names = 3; // "localhost, *.domainSuffix"
 }
 
 message SignUserCertificateResponse {
@@ -1141,24 +1141,12 @@ message UpdateNodeDrainStateReply {
   bool ok = 1;
 }
 
-message SendPmixRingMsgReq {
-  message PmixRingMsgHdr {
-    uint32 contrib_id = 1;
-    uint32 seq = 2;
-    uint32 hop_seq = 3;
-    string craned_id = 4;
-    uint32 msgsize = 5;
-  };
-
-  PmixRingMsgHdr pmix_ring_msg_hdr = 1;
-  repeated PmixProc pmix_procs = 2;
-  bytes msg = 3;
-}
 message BroadcastPmixPortRequest {
   string craned_id = 1; //  sender
-  repeated string craned_ids = 2; // peer
-  uint32 task_id = 3;
-  bytes port = 4;
+  repeated string craned_ids = 2; // nodes
+  uint32 job_id = 3;
+  uint32 step_id = 4;
+  string port = 5; // grpc port or ucx addr
 }
 
 message BroadcastPmixPortReply {
@@ -1166,12 +1154,13 @@ message BroadcastPmixPortReply {
 }
 
 message ReceivePmixPortRequest {
-  uint32 task_id = 1;
+  uint32 job_id = 1;
   message PmixPorts{
-    bytes port = 1;
-    string craned_id = 2;
+    string craned_id = 1;
+    uint32 step_id = 2;
+    string port = 3; // grpc port or ucx addr
   }
-  repeated PmixPorts pmix_ports = 2;
+  repeated PmixPorts pmix_ports = 3;
 }
 
 message ReceivePmixPortReply {
